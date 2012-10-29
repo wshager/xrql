@@ -40,7 +40,7 @@ declare function local:analyze-string($string as xs:string, $regex as xs:string,
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 
-declare function rql:construct-query-string($value as xs:string) {
+declare function rql:construct-query-string($value as node()*) {
 	if($value/name/text() = $rql:operators) then
 		let $path := $value/args[1]/text()
 		let $target := $value/args[2]/text()
@@ -48,7 +48,7 @@ declare function rql:construct-query-string($value as xs:string) {
 	else if($value/name/text() = ("and","or")) then
 		let $terms :=
 			for $x in $value/args return
-				rql:query($x)
+				rql:construct-query-string($x)
 		return concat("(",string-join($terms, concat(" ",$value/name/text()," ")),")")
 	else if($value/name/text() = ("sort")) then
 		let $args := $value/args
@@ -66,7 +66,7 @@ declare function rql:construct-query-string($value as xs:string) {
 		()
 };
 
-declare function rql:construct-query($value as xs:string) {
+declare function rql:construct-query($value as node()*) {
 	let $q := rql:construct-query-string($value)
 	let $terms := tokenize($q, "@")
 	let $sort :=
@@ -103,7 +103,7 @@ declare function rql:construct-query($value as xs:string) {
 
 declare function rql:query($items as node()*,$value as xs:string) {
 	let $q := rql:construct-query($value)
-	return rql:apply-query($items,$q)
+	return rql:apply-query($items,$q,100)
 };
 
 declare variable $rql:operatorMap := element root {
@@ -250,7 +250,7 @@ declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,
 	)
 };
 
-declare function rql:apply-rql($items as node()*,$q as node(),$maxLimit as xs:integer){
+declare function rql:apply-query($items as node()*,$q as node(),$maxLimit as xs:integer){
 	let $filter := $q/terms
 	let $limit := $q/limit
 	let $limit := 
@@ -431,7 +431,7 @@ declare function local:setConjunction($x){
 		$x
 };
 
-declare function rql:parse($query, $parameters) {
+declare function rql:parse($query as xs:string, $parameters) {
 	let $query:= rql:parse-query($query,$parameters)
 	let $query := local:setConjunction($query)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
@@ -472,12 +472,7 @@ declare function rql:parse($query, $parameters) {
 	return util:parse(string-join($q,""))
 };
 
-declare function rql:parse-query($query, $parameters){
-	let $query :=
-		if(not($query)) then
-			""
-		else
-			$query
+declare function rql:parse-query($query as xs:string, $parameters as xs:anyAtomicType?){
 	let $term := <root><args /><name>and</name></root>
 	let $topTerm := $term
 	let $query :=

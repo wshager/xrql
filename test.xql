@@ -4,10 +4,10 @@ declare namespace request="http://exist-db.org/xquery/request";
 
 import module namespace rql="http://lagua.nl/rql" at "rql.xqm";
 
+let $qstr := request:get-query-string()
+let $q := rql:parse-query($qstr,())
 
-let $q := rql:parse(request:get-query-string(),())
-
-let $q := rql:query($q/args)
+$q := rql:construct-query-string($q/args)
 
 
-return $sort
+return $q
