@@ -1,8 +1,9 @@
 xquery version "1.0";
 
 declare namespace request="http://exist-db.org/xquery/request";
-
 import module namespace rql="http://lagua.nl/rql" at "rql.xqm";
+
+declare option exist:serialize "method=json media-type=application/json";
 
 let $qstr := request:get-query-string()
 let $q := rql:parse($qstr,())
@@ -57,6 +58,7 @@ let $data :=
 		<price>1.00</price>
 	</item>
 </root>
-return rql:sequence($data/item,$q/args,100)
+(: params: data, query, maxLimit :)
+return rql:sequence($data/item,$q,100)
 
 
