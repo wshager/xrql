@@ -12,7 +12,7 @@ declare namespace transform="http://exist-db.org/xquery/transform";
 declare namespace request="http://exist-db.org/xquery/request";
 declare namespace response="http://exist-db.org/xquery/response";
 
-declare function local:analyze-string($string as xs:string, $regex as xs:string,$n as xs:integer ) {
+declare function local:analyze-string-ordered($string as xs:string, $regex as xs:string,$n as xs:integer ) {
  transform:transform   
 (<any/>, 
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="2.0"> 
@@ -40,7 +40,7 @@ declare function local:analyze-string($string as xs:string, $regex as xs:string,
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 
-declare function rql:construct-query-string($value as node()*) {
+declare function rql:to-xq-string($value as node()*) {
 	if($value/name/text() = $rql:operators) then
 		let $path := $value/args[1]/text()
 		let $target := $value/args[2]/text()
@@ -48,7 +48,7 @@ declare function rql:construct-query-string($value as node()*) {
 	else if($value/name/text() = ("and","or")) then
 		let $terms :=
 			for $x in $value/args return
-				rql:construct-query-string($x)
+				rql:to-xq-string($x)
 		return concat("(",string-join($terms, concat(" ",$value/name/text()," ")),")")
 	else if($value/name/text() = ("sort")) then
 		let $args := $value/args
@@ -66,19 +66,19 @@ declare function rql:construct-query-string($value as node()*) {
 		()
 };
 
-declare function rql:construct-query($value as node()*) {
-	let $q := rql:construct-query-string($value)
+declare function rql:to-xq($value as node()*) {
+	let $q := rql:to-xq-string($value)
 	let $terms := tokenize($q, "@")
 	let $sort :=
 		for $x in $terms return
 			if(contains($x,"order by")) then
-				$x
+				replace($x,"order by ","")
 			else
 				()
 	let $limit :=
 		for $x in $terms return
 			if(contains($x,"limit")) then
-				$x
+				replace($x, "limit ","")
 			else
 				()
 	let $terms :=
@@ -96,14 +96,14 @@ declare function rql:construct-query($value as node()*) {
 				$limit
 			},
 			element terms {
-				$terms
+				replace(string-join($terms,"@")," and @","")
 			}
 		}
 };
 
-declare function rql:query($items as node()*,$value as xs:string) {
-	let $q := rql:construct-query($value)
-	return rql:apply-query($items,$q,100)
+declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer) {
+	let $q := rql:to-xq($value)
+	return rql:apply-xq($items,$q,$maxLimit)
 };
 
 declare variable $rql:operatorMap := element root {
@@ -208,7 +208,7 @@ declare function rql:get-range($maxLimit as xs:integer) {
 			1 div 0e0
 	let $start := 0
 	let $end := 1 div 0e0
-	return
+	let $range :=
 		if($range) then
 			let $groups := text:groups($range, "^items=(\d+)-(\d+)?$")
 			return
@@ -239,6 +239,7 @@ declare function rql:get-range($maxLimit as xs:integer) {
 				($limit,$start,$maxCount)
 		else
 			($limit,$start,$maxCount)
+	return string-join($range,",")
 };
 
 declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
@@ -250,19 +251,23 @@ declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,
 	)
 };
 
-declare function rql:apply-query($items as node()*,$q as node(),$maxLimit as xs:integer){
-	let $filter := $q/terms
-	let $limit := $q/limit
+declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer){
+	let $filter := $q/terms/text()
+	let $limit := $q/limit/text()
 	let $limit := 
 		if($q/limit) then
-			$q/limit
+			$q/limit/text()
 		else
 			rql:get-range($maxLimit)
-	let $sort := $q/sort
+	let $range := tokenize($limit,",")
+	let $limit := xs:integer($range[1])
+	let $start := xs:integer($range[2])
+	let $maxCount := xs:integer($range[3])
+	let $sort := string-join(for $x in tokenize($q/sort,",") return concat("$x/",$x),",")
 	(: are there items to return? :)
 	let $items := 
 			if($filter ne "") then
-				util:eval(concat("$items",$filter))
+				util:eval(concat("$items[",$filter,"]"))
 			else
 				$items
 		let $items := 
@@ -272,32 +277,28 @@ declare function rql:apply-query($items as node()*,$q as node(),$maxLimit as xs:
 				$items
 	return 
 		if($maxCount) then
-			rql:apply-rql-paging($items,$limit)
+			rql:apply-rql-paging($items,$limit,$start,$maxCount)
 		else
 			$items
 };
 
-declare function rql:apply-rql-paging($items as node()*,$limit as xs:anyAtomicType){
-	let $limit := $limit[1]
-	let $start := $limit[2]
-	let $maxCount := $limit[3]
-	return
-		if($maxCount and $limit and $start < count($items)) then
-			(: sequence is 1-based :)
-			(: this will return the filtered count :)
-			let $totalCount := count($items)
-			let $null := rql:set-range-header($limit,$start,$maxCount,$totalCount)
-			let $items :=
-				if($limit and $limit < 1 div 0e0) then
-					subsequence($items,$start+1,$limit)
-				else
-					$items
-			return $items
-		else if($maxCount) then
-			let $null := rql:set-range-header($limit,$start,$maxCount,0)
-			return ()
-		else
-			$items
+declare function rql:apply-rql-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
+	if($maxCount and $limit and $start < count($items)) then
+		(: sequence is 1-based :)
+		(: this will return the filtered count :)
+		let $totalCount := count($items)
+		let $null := rql:set-range-header($limit,$start,$maxCount,$totalCount)
+		let $items :=
+			if($limit and $limit < 1 div 0e0) then
+				subsequence($items,$start+1,$limit)
+			else
+				$items
+		return $items
+	else if($maxCount) then
+		let $null := rql:set-range-header($limit,$start,$maxCount,0)
+		return ()
+	else
+		$items
 };
 
 declare variable $rql:autoConvertedString := (
@@ -435,7 +436,7 @@ declare function rql:parse($query as xs:string, $parameters) {
 	let $query:= rql:parse-query($query,$parameters)
 	let $query := local:setConjunction($query)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
-	let $analysis := local:analyze-string($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
+	let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
 	
 	let $matches := $analysis//match
 	let $nomatch := $analysis//nomatch
@@ -499,8 +500,8 @@ declare function rql:parse-query($query as xs:string, $parameters as xs:anyAtomi
 		else
 			$query
 	(: convert FIQL to normalized call syntax form :)
-	let $analysis := local:analyze-string($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"),4)
-	                                                      (:<------- property ------------><----- operator -----><--------- value --------------->:)
+	let $analysis := local:analyze-string-ordered($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"),4)
+	                                                              (:<------- property ------------><----- operator -----><--------- value --------------->:)
 	let $matches := $analysis//match
 	let $nomatch := $analysis//nomatch
 	let $queryp := 
