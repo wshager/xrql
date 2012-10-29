@@ -442,7 +442,7 @@ declare function local:setConjunction($x){
 		$x
 };
 
-declare function rql:parse($query as xs:string, $parameters) {
+declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType?) {
 	let $query:= rql:parse-query($query,$parameters)
 	let $query := local:setConjunction($query)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
@@ -483,7 +483,12 @@ declare function rql:parse($query as xs:string, $parameters) {
 	return util:parse(string-join($q,""))
 };
 
-declare function rql:parse-query($query as xs:string, $parameters as xs:anyAtomicType?){
+declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtomicType?){
+	let $query :=
+		if(not($query)) then
+			""
+		else
+			$query
 	let $term := <root><args /><name>and</name></root>
 	let $topTerm := $term
 	let $query :=
