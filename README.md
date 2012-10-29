@@ -15,3 +15,5 @@ Paging is enabled through persvr/perstore Range header:
 Range : items=0/10
 
 See https://github.com/persvr/perstore
+
+The accept header is used for content negotiation.
