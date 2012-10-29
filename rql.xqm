@@ -40,7 +40,7 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 
-declare function rql:to-xq-string($value as node()*) {
+declare function rql:to-xq-string($value) {
 	if($value/name/text() = $rql:operators) then
 		let $path := $value/args[1]/text()
 		let $target := $value/args[2]/text()
@@ -93,10 +93,22 @@ declare function rql:to-xq($value as node()*) {
 				$sort
 			},
 			element limit {
-				$limit
+				let $range := tokenize($limit,",")
+				let $limit :=
+					if(count($range) > 0 and count($range)<2) then
+						concat($limit,",0")
+					else
+						$limit
+				let $limit := 
+					if(count($range) > 0 and count($range)<3) then
+						concat($limit,",1")
+					else
+						$limit
+				return $limit
 			},
 			element terms {
-				replace(string-join($terms,"@")," and @","")
+				let $t := string-join($terms,"@")
+				return replace(replace($t," and @",""),"@","")
 			}
 		}
 };
@@ -112,7 +124,7 @@ declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as 
 			util:declare-option("exist:serialize", "method=html media-type=text/html")
 		else
 			()
-	let $q := rql:to-xq($value)
+	let $q := rql:to-xq($value/args)
 	return rql:apply-xq($items,$q,$maxLimit)
 };
 
@@ -218,7 +230,7 @@ declare function rql:get-range($maxLimit as xs:integer) {
 			1 div 0e0
 	let $start := 0
 	let $end := 1 div 0e0
-	let $range :=
+	return
 		if($range) then
 			let $groups := text:groups($range, "^items=(\d+)-(\d+)?$")
 			return
@@ -244,12 +256,11 @@ declare function rql:get-range($maxLimit as xs:integer) {
 						1
 					else
 						$maxCount
-				return ($limit,$start,$maxCount)
+				return concat($limit,",",$start,",",$maxCount)
 			else
-				($limit,$start,$maxCount)
+				concat($limit,",",$start,",",$maxCount)
 		else
-			($limit,$start,$maxCount)
-	return string-join($range,",")
+			concat($limit,",",$start,",",$maxCount)
 };
 
 declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
@@ -265,7 +276,7 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 	let $filter := $q/terms/text()
 	let $limit := $q/limit/text()
 	let $limit := 
-		if($q/limit) then
+		if($q/limit/text()) then
 			$q/limit/text()
 		else
 			rql:get-range($maxLimit)
@@ -535,9 +546,11 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 					substring($operator, 2, string-length($operator) - 2)
 			return concat($operator, "(" , $property , "," , $value , ")")
 	let $queryp := 
-		for $n in 1 to count($queryp) return
+		if(count($queryp) > 0) then
+			for $n in 1 to count($queryp) return
 			concat($queryp[$n],$nomatch[$n]/text())
-	
+		else
+			$nomatch[1]/text()
 	let $query := string-join($queryp,"")
 	return $query
 };
