@@ -102,6 +102,16 @@ declare function rql:to-xq($value as node()*) {
 };
 
 declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer) {
+	let $accept := request:get-header("Accept")
+	let $null :=
+		if($accept = ("application/json","application/javascript")) then
+			util:declare-option("exist:serialize", "method=json media-type=application/json")
+		else if($accept = ("text/xml","application/xml")) then
+			util:declare-option("exist:serialize", "method=xml media-type=application/xml")
+		else if($accept = ("text/html")) then
+			util:declare-option("exist:serialize", "method=html media-type=text/html")
+		else
+			()
 	let $q := rql:to-xq($value)
 	return rql:apply-xq($items,$q,$maxLimit)
 };
