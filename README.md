@@ -5,9 +5,8 @@ An implementation of rql in xquery:
 
 https://github.com/persvr/rql
 
-Testing:
+Test with eXist:
 --------
-# With eXist
 
 Download eXist @ http://exist-db.org
 
