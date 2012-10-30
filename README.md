@@ -20,4 +20,4 @@ Range : items=0/10
 
 See https://github.com/persvr/perstore
 
-The accept header is used for content negotiation.
+The Accept header is used for content negotiation. Featured types: application/json, application/xml, text/html, text/plain.
