@@ -7,7 +7,7 @@ https://github.com/persvr/rql
 
 Testing:
 --------
-* With eXist
+# With eXist
 
 Download eXist @ http://exist-db.org
 
