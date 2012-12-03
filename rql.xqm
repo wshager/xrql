@@ -12,27 +12,74 @@ declare namespace transform="http://exist-db.org/xquery/transform";
 declare namespace request="http://exist-db.org/xquery/request";
 declare namespace response="http://exist-db.org/xquery/response";
 
+declare function rql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
+	for $node in $nodes return
+		if($node instance of element()) then
+	 		if($node/name = $names) then
+				()
+			else
+				element {node-name($node)} {
+					rql:remove-elements-by-name($node/node(), $names)
+				}
+		else if ($node instance of document-node())
+			then rql:remove-elements-by-name($node/node(), $names)
+		else
+			$node
+};
+
+declare function rql:remove-elements-by-property($nodes as node()*, $properties as xs:string*) as node()* {
+	for $node in $nodes return
+		if($node instance of element()) then
+	 		if($node/args[1] = $properties) then
+				()
+			else
+				element {node-name($node)} {
+					rql:remove-elements-by-property($node/node(), $properties)
+				}
+		else if ($node instance of document-node())
+			then rql:remove-elements-by-property($node/node(), $properties)
+		else
+			$node
+};
+
+declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
+	for $node in $nodes return
+		if($node instance of element()) then
+	 		if($node/name = ("and","or") and count($node/args) = 1) then
+				element {node-name($node)} {
+					rql:remove-nested-conjunctions($node/args/*)
+				}
+			else
+				element {node-name($node)} {
+					rql:remove-nested-conjunctions($node/node())
+				}
+		else
+			$node
+};
+
 declare function local:analyze-string-ordered($string as xs:string, $regex as xs:string,$n as xs:integer ) {
  transform:transform   
 (<any/>, 
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="2.0"> 
-	<xsl:template match='/' >  
+	<xsl:template match='/' >
 		<xsl:analyze-string regex="{$regex}" select="'{$string}'" > 
 			<xsl:matching-substring>
-				<xsl:for-each select="1 to {$n}">
-					<match>
-						<xsl:attribute name="n"><xsl:value-of select="."/></xsl:attribute>
-						<xsl:value-of select="regex-group(.)"/>  
-					</match>  
-				</xsl:for-each> 
+				<matches>
+					<xsl:for-each select="1 to {$n}">
+						<match>
+							<xsl:attribute name="n"><xsl:value-of select="."/></xsl:attribute>
+							<xsl:value-of select="regex-group(.)"/>  
+						</match>
+					</xsl:for-each>
+				</matches>
 			</xsl:matching-substring>
 			<xsl:non-matching-substring>
-				<nomatch>  
+				<nomatch>
 					<xsl:value-of select="."/>  
-				</nomatch>  
+				</nomatch>
 			</xsl:non-matching-substring>  
-		</xsl:analyze-string>  
-	</xsl:template> 
+		</xsl:analyze-string>
+	</xsl:template>
 </xsl:stylesheet>,
 ()
 )
@@ -42,7 +89,7 @@ declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 
 declare function rql:to-xq-string($value) {
 	if($value/name/text() = $rql:operators) then
-		let $path := $value/args[1]/text()
+		let $path := replace($value/args[1]/text(),"\.",":")
 		let $target := $value/args[2]/text()
 		return concat($path," ",$value/name/text()," '",$target,"'")
 	else if($value/name/text() = ("and","or")) then
@@ -50,50 +97,44 @@ declare function rql:to-xq-string($value) {
 			for $x in $value/args return
 				rql:to-xq-string($x)
 		return concat("(",string-join($terms, concat(" ",$value/name/text()," ")),")")
-	else if($value/name/text() = ("sort")) then
-		let $args := $value/args
-		let $sort :=
-			for $x in $args return
-				if(starts-with($x,"-")) then
-					concat(substring($x,2), " descending")
-				else
-					$x
-		return concat("@order by ",string-join($sort,","),"@")
-	else if($value/name/text() = ("limit")) then
-		let $args := $value/args
-		return concat("@limit ",string-join($args,","),"@")
 	else
-		()
+		""
+};
+
+declare function local:get-by-name($value as node()*,$name as xs:string) {
+	if($value/name and $value/name/text() eq $name) then
+		$value
+	else
+		for $arg in $value/args return
+			local:get-by-name($arg,$name)
 };
 
 declare function rql:to-xq($value as node()*) {
-	let $q := rql:to-xq-string($value)
-	let $terms := tokenize($q, "@")
+	let $value := rql:remove-elements-by-property($value,("source","print","embed"))
+	let $value := rql:remove-nested-conjunctions($value)
+	let $sort := local:get-by-name($value,"sort")
 	let $sort :=
-		for $x in $terms return
-			if(contains($x,"order by")) then
-				replace($x,"order by ","")
-			else
-				()
-	let $limit :=
-		for $x in $terms return
-			if(contains($x,"limit")) then
-				replace($x, "limit ","")
-			else
-				()
-	let $terms :=
-		for $x in $terms return
-			if(contains($x,"order by") or contains($x,"limit")) then
-				()
-			else
-				$x
+			for $x in $sort/args/text() return
+				let $x := util:unescape-uri(replace($x,"\.",":"),"UTF-8")
+				return
+					if(starts-with($x,"-")) then
+						concat(substring($x,2), " descending")
+					else if(starts-with($x,"+")) then
+						substring($x,2)
+					else
+						$x
+	let $limit := local:get-by-name($value,"limit")
+	let $filter := rql:remove-elements-by-name($value,("limit","sort"))
+	let $filter := rql:remove-nested-conjunctions($filter)
+	let $filter := rql:to-xq-string($filter)
 	return
 		element root {
 			element sort {
 				$sort
 			},
 			element limit {
-				let $range := tokenize($limit,",")
+				let $range := $limit/args/text()
+				let $limit := string-join($range,",")
 				let $limit :=
 					if(count($range) > 0 and count($range)<2) then
 						concat($limit,",0")
@@ -107,8 +148,7 @@ declare function rql:to-xq($value as node()*) {
 				return $limit
 			},
 			element terms {
-				let $t := string-join($terms,"@")
-				return replace(replace($t," and @",""),"@","")
+				util:unescape-uri($filter,"UTF-8")
 			}
 		}
 };
@@ -186,11 +226,12 @@ declare function local:stringToValue($string, $parameters){
 	:)
 	let $string := 
 		if(count($parts) gt 1) then
-			$parts[2]
+			concat($parts[1],"(",$parts[2],")")
 		else
 			$string
-	(: return converter(string) :)
-	return rql:converters-default($string)
+	return $string
+	(: return converter(string) 
+	return rql:converters-default($string):)
 };
 
 declare function rql:get-range($maxLimit as xs:integer) {
@@ -347,7 +388,7 @@ declare function rql:converters-auto($string){
 		let $number := number($string)
 		return 
 			if($number ne 0 and string($number) ne $string) then
-				let $string := xmldb:decode-uri($string)
+				(:let $string := xmldb:decode-uri($string):)
 				(:
 				if($rql:jsonQueryCompatible) then
 					if(string.charAt(0) == "'" && string.charAt(string.length-1) == "'"){
@@ -355,7 +396,7 @@ declare function rql:converters-auto($string){
 					}
 				}
 				:)
-				return $string
+				$string
 			else
 				$number
 };
@@ -455,43 +496,223 @@ declare function local:setConjunction($x){
 
 declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType?) {
 	let $query:= rql:parse-query($query,$parameters)
-	let $query := local:setConjunction($query)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
-	let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
-	
-	let $matches := $analysis//match
-	let $nomatch := $analysis//nomatch
-	
-	let $r :=
-		for $n in 1 to xs:integer(count($matches) div 4) return
-			let $closedParen := $matches[@n=1][$n]/text()
-			let $delim := $matches[@n=2][$n]/text()
-			let $propertyOrValue := $matches[@n=3][$n]/text()
-			let $openParen := $matches[@n=4][$n]/text()
-			return 
-				if($openParen) then
-					concat($propertyOrValue,"(")
-				else if($closedParen) then
-					")"
-				else if($propertyOrValue or $delim eq ",") then
-					local:stringToValue($propertyOrValue,())
+	return if($query ne "") then
+		let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
+		
+		let $matches := $analysis//match
+		let $nomatch := $analysis//nomatch
+		
+		let $r :=
+			for $n in 1 to xs:integer(count($matches) div 4) return
+				let $closedParen := $matches[@n=1][$n]/text()
+				let $delim := $matches[@n=2][$n]/text()
+				let $propertyOrValue := $matches[@n=3][$n]/text()
+				let $openParen := $matches[@n=4][$n]/text()
+				return 
+					if($openParen) then
+						concat($propertyOrValue,"(")
+					else if($closedParen) then
+						")"
+					else if($propertyOrValue or $delim eq ",") then
+						local:stringToValue($propertyOrValue,())
+					else
+						()
+		let $q := for $x in $r return
+			(: treat number separately, throws error on compare :)
+			if(string(number($x)) ne "NaN") then
+				concat("<args>",$x, "</args>")
+			else if(matches($x,"^.*\($")) then
+				concat("<args><name>",replace($x,"\(",""),"</name>")
+			else if($x eq ")") then 
+				"</args>"
+			else if($x eq ",") then 
+				"</args><args>"
+			else 
+				concat("<args>",$x, "</args>")
+		return util:parse(string-join($q,""))
+	else
+		<args/>
+};
+
+declare function local:no-conjunction($seq,$hasopen) {
+	if($seq[1]/text() eq ")") then
+		if($hasopen) then
+			local:no-conjunction(subsequence($seq,2,count($seq)),false())
+		else
+			$seq[1]
+	else if($seq[1]/text() = ("&amp;", "|")) then
+		false()
+	else if($seq[1]/text() eq "(") then
+		local:no-conjunction(subsequence($seq,2,count($seq)),true())
+	else
+		false()
+};
+
+declare function local:set-conjunction($query as xs:string) {
+	let $parts := local:analyze-string-ordered($query,"(\()|(&amp;)|(\|)|(\))",4)
+	let $groups := 
+		for $i in 1 to count($parts) return
+			if(name($parts[$i]) eq "nomatch") then
+				element group {
+					$parts[$i]/text()
+				}
+			else
+			let $p := $parts[$i]//match/text()
+			return
+				if($p eq "(") then
+						element group {
+							attribute i {$i},
+							$p
+						}
+				else if($p eq "|") then
+						element group {
+							attribute i {$i},
+							$p
+						}
+				else if($p eq "&amp;") then
+						element group {
+							attribute i {$i},
+							$p
+						}
+				else if($p eq ")") then
+						element group {
+							attribute i {$i},
+							$p
+						}
 				else
 					()
-
-	let $q := for $x in $r return
-		(: treat number separately, throws error on compare :)
-		if(string(number($x)) ne "NaN") then
-			concat("<args>",$x, "</args>")
-	    else if(contains($x,"(")) then
-	        concat("<args><name>",replace($x,"\(",""),"</name>")
-	    else if($x eq ")") then 
-	    	"</args>"
-	    else if($x eq ",") then 
-	    	"</args><args>"
-	    else 
-	    	concat("<args>",$x, "</args>")
-	   
-	return util:parse(string-join($q,""))
+	let $cnt := count($groups)
+	let $remove :=
+		for $n in 1 to $cnt return
+			let $p := $groups[$n]
+			return
+				if($p/@i and $p/text() eq "(") then
+					let $close := local:no-conjunction(subsequence($groups,$n+1,$cnt)[@i],false())
+					return 
+						if($close) then
+							(string($p/@i),string($close/@i))
+						else
+							()
+				else
+					()
+	let $groups :=
+		for $x in $groups return
+			if($x/@i = $remove) then
+				element group {$x/text()}
+			else
+				$x
+	let $groups :=
+		for $n in 1 to $cnt return
+			let $x := $groups[$n]
+			return
+				if($x/@i and $x/text() eq "(") then
+					let $conjclose :=
+						for $y in subsequence($groups,$n+1,$cnt) return
+							if($y/@i and $y/text() = ("&amp;","|",")")) then
+								$y
+							else
+								()
+					let $t := $conjclose[text() = ("&amp;","|")][1]
+					let $conj :=
+						if($t/text() eq "|") then
+							"or"
+						else
+							"and"
+					let $close := $conjclose[text() eq ")"][1]/@i
+					return
+						element group {
+							attribute c {$t/@i},
+							attribute e {$close},
+							concat($conj,"(")
+						}
+				else if($x/text() = ("&amp;","|")) then
+					element group {
+						attribute i {$x/@i},
+						attribute e {10e10},
+						attribute t {
+							if($x/text() eq "|") then
+								"or"
+							else
+								"and"
+						},
+						","
+					}
+				else
+					$x
+	let $groups :=
+		for $n in 1 to $cnt return
+			let $x := $groups[$n]
+			return
+				if($x/@i and not($x/@c) and $x/text() ne ")") then
+					let $seq := subsequence($groups,1,$n - 1)
+					let $open := $seq[@c eq $x/@i]
+					return
+						if($open) then
+							element group {
+								attribute s {$x/@i},
+								attribute e {$open/@e},
+								","
+							}
+						else
+							$x
+				else
+					$x
+	let $groups :=
+		for $n in 1 to $cnt return
+			let $x := $groups[$n]
+			return
+				if($x/@i and not($x/@c) and $x/text() ne ")") then
+					let $seq := subsequence($groups,1,$n - 1)
+					let $open := $seq[@c eq $x/@i][last()]
+					let $prev := $seq[text() eq ","][last()]
+					let $prev := 
+							if($prev and $prev/@e < 10e10) then
+								$seq[@c = $prev/@s]/@c
+							else
+								$prev/@i
+					return
+						if($open) then
+							$x
+						else
+							element group {
+								attribute i {$x/@i},
+								attribute t {$x/@t},
+								attribute e {$x/@e},
+								attribute s {
+									if($prev) then
+										$prev
+									else
+										0
+								},
+								","
+							}
+				else
+					$x
+	let $groups :=
+			for $n in 1 to $cnt return
+				let $x := $groups[$n]
+				return
+					if($x/@i or $x/@c) then
+						let $start := $groups[@s eq $x/@i] | $groups[@s eq $x/@c]
+						return
+							if($start) then
+								element group {
+									$x/@*,
+									if($x/@c) then
+										concat($start/@t,"(",$x/text())
+									else
+										concat($x/text(),$start/@t,"(")
+								}
+							else
+								$x
+					else
+						$x
+	let $pre := concat($groups[@s = 0]/@t,"(")
+	let $post := 
+		for $x in $groups[@e = 10e10] return
+			")"
+	return concat($pre,string-join($groups,""),string-join($post,""))
 };
 
 declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtomicType?){
@@ -499,14 +720,8 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 		if(not($query)) then
 			""
 		else
-			$query
-	let $term := <root><args /><name>and</name></root>
-	let $topTerm := $term
-	let $query :=
-		if(starts-with($query,"?")) then
-			substring($query,2)
-		else
-			$query
+			replace($query," ","%20")
+	let $query := replace($query,"%3A",":")
 	let $query :=
 		if($rql:jsonQueryCompatible) then
 			let $query := fn:replace($query,"%3C=","=le=")
@@ -527,30 +742,28 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 			$query
 	(: convert FIQL to normalized call syntax form :)
 	let $analysis := local:analyze-string-ordered($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"),4)
-	                                                              (:<------- property ------------><----- operator -----><--------- value --------------->:)
-	let $matches := $analysis//match
-	let $nomatch := $analysis//nomatch
-	let $queryp := 
-		for $n in 1 to xs:integer(count($matches) div 4) return
-			let $property := $matches[@n=1][$n]/text()
-			let $operator := $matches[@n=2][$n]/text()
-			let $value := $matches[@n=4][$n]/text()
-			let $operator := 
-				if(string-length($operator) < 3) then
-					if($rql:operatorMap//map[@operator=$operator]) then
-						$rql:operatorMap//map[@operator=$operator]/@name
-					else
-						(:throw new URIError("Illegal operator " + operator):)
-						()
+	                                                              (:<--------------- property ------------><--------- operator --------><---------------- value ---------------->:)
+	let $analysis :=
+		for $n in 1 to count($analysis) return
+			let $x := $analysis[$n]
+			return
+				if(name($x) eq "nomatch") then
+					$x
 				else
-					substring($operator, 2, string-length($operator) - 2)
-			return concat($operator, "(" , $property , "," , $value , ")")
-	let $queryp := 
-		if(count($queryp) > 0) then
-			for $n in 1 to count($queryp) return
-			concat($queryp[$n],$nomatch[$n]/text())
-		else
-			$nomatch[1]/text()
-	let $query := string-join($queryp,"")
-	return $query
+					let $property := $x/match[1]/text()
+					let $operator := $x/match[2]/text()
+					let $value := $x/match[4]/text()
+					let $operator := 
+						if(string-length($operator) < 3) then
+							if($rql:operatorMap//map[@operator=$operator]) then
+								$rql:operatorMap//map[@operator=$operator]/@name
+							else
+								(:throw new URIError("Illegal operator " + operator):)
+								()
+						else
+							substring($operator, 2, string-length($operator) - 2)
+					return concat($operator, "(" , $property , "," , $value , ")")
+	let $query := string-join($analysis,"")
+	return local:set-conjunction($query)
 };
+
