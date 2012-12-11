@@ -246,8 +246,15 @@ declare function local:stringToValue($string as xs:string, $parameters){
 		else
 			()
 	let $string := 
-		if(count($parts) gt 1) then
-			concat($parts[1],"(",$parts[2],")")
+		if(count($parts) > 1) then
+			(: check for possible typecast :)
+			let $cast := $parts[1]
+			return
+				if(matches($cast,"^([^.]*(xs|fn)\.[^.]+)|([^.]*(number|text|\-case))$"))then
+					let $path := string-join(subsequence($parts,2,count($parts)),":")
+					return concat($cast,"(",$path,")")
+				else
+					$string
 		else
 			$string
 	return $string
