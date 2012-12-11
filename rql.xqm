@@ -45,7 +45,9 @@ declare function rql:remove-elements-by-property($nodes as node()*, $properties 
 declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 	for $node in $nodes return
 		if($node instance of element()) then
-	 		if($node/name = ("and","or") and count($node/args) = 1) then
+			if($node/name = ("and","or") and count($node/args) = 0) then
+				()
+	 		else if($node/name = ("and","or") and count($node/args) = 1) then
 				element {node-name($node)} {
 					rql:remove-nested-conjunctions($node/args/*)
 				}
@@ -86,12 +88,34 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 };
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
+declare variable $rql:methods := ("matches","exists");
 
 declare function rql:to-xq-string($value) {
+	(: get rid of arrays :)
+	let $value := 
+		if(name($value/*[1]) eq "args") then
+			$value/*[1]
+		else
+			$value
+	return
 	if($value/name/text() = $rql:operators) then
 		let $path := replace($value/args[1]/text(),"\.",":")
-		let $target := $value/args[2]/text()
-		return concat($path," ",$value/name/text()," '",$target,"'")
+		let $operator := $value/name/text()
+		let $target := rql:converters-default($value/args[2]/text())
+		let $operator := 
+			if($target instance of xs:string) then
+				$operator
+			else
+				$rql:operatorMap//map[@name eq $operator][1]/@operator
+		return concat($path," ",$operator," ", string($target))
+	else if($value/name/text() = $rql:methods) then
+		let $path := replace($value/args[1]/text(),"\.",":")
+		let $target :=
+			if($value/args[2]) then
+				concat(",'",$value/args[2]/text(),"'")
+			else
+				""
+		return concat($value/name/text(),"(",$path,$target,")")
 	else if($value/name/text() = ("and","or")) then
 		let $terms :=
 			for $x in $value/args return
@@ -101,18 +125,24 @@ declare function rql:to-xq-string($value) {
 		""
 };
 
-declare function local:get-by-name($value as node()*,$name as xs:string) {
+declare function rql:get-element-by-name($value as node()*,$name as xs:string) {
 	if($value/name and $value/name/text() eq $name) then
 		$value
 	else
 		for $arg in $value/args return
-			local:get-by-name($arg,$name)
+			rql:get-element-by-name($arg,$name)
+};
+
+declare function rql:get-element-by-property($value as node()*,$prop as xs:string) {
+	if($value/args[1] and $value/args[1]/text() eq $prop) then
+		subsequence($value/args,2,count($value/args))
+	else
+		for $arg in $value/args return
+			rql:get-element-by-property($arg,$prop)
 };
 
 declare function rql:to-xq($value as node()*) {
-	let $value := rql:remove-elements-by-property($value,("source","print","embed"))
-	let $value := rql:remove-nested-conjunctions($value)
-	let $sort := local:get-by-name($value,"sort")
+	let $sort := rql:get-element-by-name($value,"sort")
 	let $sort :=
 			for $x in $sort/args/text() return
 				let $x := util:unescape-uri(replace($x,"\.",":"),"UTF-8")
@@ -123,14 +153,14 @@ declare function rql:to-xq($value as node()*) {
 						substring($x,2)
 					else
 						$x
-	let $limit := local:get-by-name($value,"limit")
+	let $limit := rql:get-element-by-name($value,"limit")
 	let $filter := rql:remove-elements-by-name($value,("limit","sort"))
 	let $filter := rql:remove-nested-conjunctions($filter)
 	let $filter := rql:to-xq-string($filter)
 	return
 		element root {
 			element sort {
-				$sort
+				string-join($sort,",")
 			},
 			element limit {
 				let $range := $limit/args/text()
@@ -148,7 +178,7 @@ declare function rql:to-xq($value as node()*) {
 				return $limit
 			},
 			element terms {
-				util:unescape-uri($filter,"UTF-8")
+				$filter
 			}
 		}
 };
@@ -199,10 +229,7 @@ declare variable $rql:operatorMap := element root {
 	}
 };
 
-declare function local:stringToValue($string, $parameters){
-	(: not possible to call anonymous function in xquery 1.0
-	$converter := rql:converters-default 
-	:)
+declare function local:stringToValue($string as xs:string, $parameters){
 	let $param-index :=
 		if(starts-with($string,"$")) then
 			number(substring($string,2)) - 1
@@ -218,20 +245,12 @@ declare function local:stringToValue($string, $parameters){
 			tokenize($string,":")
 		else
 			()
-	(:
-	let $converter :=
-		if(count($parts) gt 1) then
-			rql:converters-parts[1]
-		else $converter
-	:)
 	let $string := 
 		if(count($parts) gt 1) then
 			concat($parts[1],"(",$parts[2],")")
 		else
 			$string
 	return $string
-	(: return converter(string) 
-	return rql:converters-default($string):)
 };
 
 declare function rql:get-range($maxLimit as xs:integer) {
@@ -339,12 +358,12 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 				$items
 	return 
 		if($maxCount) then
-			rql:apply-rql-paging($items,$limit,$start,$maxCount)
+			rql:apply-paging($items,$limit,$start,$maxCount)
 		else
 			$items
 };
 
-declare function rql:apply-rql-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
+declare function rql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
 	if($maxCount and $limit and $start < count($items)) then
 		(: sequence is 1-based :)
 		(: this will return the filtered count :)
@@ -373,12 +392,12 @@ declare variable $rql:autoConvertedString := (
 );
 
 declare variable $rql:autoConvertedValue := (
-	true(),
-	false(),
-	(),
-	(),
-	1 div 0e0,
-	-1 div 0e0
+	"true()",
+	"false()",
+	"()",
+	"()",
+	"1 div 0e0",
+	"-1 div 0e0"
 );
 
 declare function rql:converters-auto($string){
@@ -388,15 +407,7 @@ declare function rql:converters-auto($string){
 		let $number := number($string)
 		return 
 			if($number ne 0 and string($number) ne $string) then
-				(:let $string := xmldb:decode-uri($string):)
-				(:
-				if($rql:jsonQueryCompatible) then
-					if(string.charAt(0) == "'" && string.charAt(string.length-1) == "'"){
-						return JSON.parse('"' + string.substring(1,string.length-1) + '"');
-					}
-				}
-				:)
-				$string
+				concat("'",util:unescape-uri($string,"UTF-8"),"'")
 			else
 				$number
 };
@@ -480,36 +491,28 @@ declare variable $rql:primaryKeyName := 'id';
 declare variable $rql:lastSeen := ('sort', 'select', 'values', 'limit');
 declare variable $rql:jsonQueryCompatible := true();
 
-declare function local:setConjunction($x){
-	if(contains($x,"&amp;")) then
-		let $terms := tokenize($x,"&amp;")
-		let $terms :=
-			for $x in $terms return
-				if(contains($x,"|")) then
-					concat("or(",string-join(tokenize($x,"\|"),","),")")
-				else
-					$x
-		return concat("and(",string-join($terms,","),")")
-	else
-		$x
-};
-
 declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType?) {
 	let $query:= rql:parse-query($query,$parameters)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
 	return if($query ne "") then
 		let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
 		
-		let $matches := $analysis//match
-		let $nomatch := $analysis//nomatch
-		
-		let $r :=
-			for $n in 1 to xs:integer(count($matches) div 4) return
-				let $closedParen := $matches[@n=1][$n]/text()
-				let $delim := $matches[@n=2][$n]/text()
-				let $propertyOrValue := $matches[@n=3][$n]/text()
-				let $openParen := $matches[@n=4][$n]/text()
-				return 
+		let $analysis :=
+			for $n in 1 to count($analysis) return
+				let $x := $analysis[$n]
+				return
+					if(name($x) eq "nomatch") then
+						replace($x,"\(","<args>")
+					else
+						let $property := $x/match[1]/text()
+						let $operator := $x/match[2]/text()
+						let $value := $x/match[4]/text()
+						let $closedParen := $x/match[1]/text()
+						let $delim := $x/match[2]/text()
+						let $propertyOrValue := $x/match[3]/text()
+						let $openParen := $x/match[4]/text()
+
+				let $r := 
 					if($openParen) then
 						concat($propertyOrValue,"(")
 					else if($closedParen) then
@@ -518,18 +521,19 @@ declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType
 						local:stringToValue($propertyOrValue,())
 					else
 						()
-		let $q := for $x in $r return
-			(: treat number separately, throws error on compare :)
-			if(string(number($x)) ne "NaN") then
-				concat("<args>",$x, "</args>")
-			else if(matches($x,"^.*\($")) then
-				concat("<args><name>",replace($x,"\(",""),"</name>")
-			else if($x eq ")") then 
-				"</args>"
-			else if($x eq ",") then 
-				"</args><args>"
-			else 
-				concat("<args>",$x, "</args>")
+				return for $s in $r return
+					(: treat number separately, throws error on compare :)
+					if(string(number($s)) ne "NaN") then
+						concat("<args>",$s, "</args>")
+					else if(matches($s,"^.*\($")) then
+						concat("<args><name>",replace($s,"\(",""),"</name>")
+					else if($s eq ")") then 
+						"</args>"
+					else if($s eq ",") then 
+						"</args><args>"
+					else 
+						concat("<args>",$s, "</args>")
+		let $q := string-join($analysis,"")
 		return util:parse(string-join($q,""))
 	else
 		<args/>
@@ -708,7 +712,11 @@ declare function local:set-conjunction($query as xs:string) {
 								$x
 					else
 						$x
-	let $pre := concat($groups[@s = 0]/@t,"(")
+	let $pre := 
+		if(count($groups[@s = 0]) > 0) then
+			concat($groups[@s = 0]/@t,"(")
+		else
+			""
 	let $post := 
 		for $x in $groups[@e = 10e10] return
 			")"
