@@ -126,7 +126,7 @@ declare function rql:to-xq-string($value) {
 };
 
 declare function rql:get-element-by-name($value as node()*,$name as xs:string) {
-	if($value/name and $value/name/text() eq $name) then
+	if($value/name and $value/name/text() = $name) then
 		$value
 	else
 		for $arg in $value/args return
@@ -134,11 +134,12 @@ declare function rql:get-element-by-name($value as node()*,$name as xs:string) {
 };
 
 declare function rql:get-element-by-property($value as node()*,$prop as xs:string) {
-	if($value/args[1] and $value/args[1]/text() eq $prop) then
-		subsequence($value/args,2,count($value/args))
-	else
-		for $arg in $value/args return
-			rql:get-element-by-property($arg,$prop)
+	for $arg in $value/args return
+		let $r := if($arg/position() = 1 and $arg/text() = $prop) then
+			subsequence($value/args,2,count($value/args))
+		else
+			()
+		return $r | rql:get-element-by-property($arg,$prop)
 };
 
 declare function rql:to-xq($value as node()*) {
