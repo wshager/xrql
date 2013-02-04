@@ -316,7 +316,7 @@ declare function rql:get-range($maxLimit as xs:integer) {
 						$end
 				let $limit :=
 					if($end >= $start) then
-						min(($limit, $end - $start))
+						min(($limit, $end + 1 - $start))
 					else
 						$limit
 				let $maxCount :=
