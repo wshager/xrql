@@ -13,7 +13,7 @@ declare namespace request="http://exist-db.org/xquery/request";
 declare namespace response="http://exist-db.org/xquery/response";
 
 declare function rql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
-	for $node in $nodes return
+    for $node in $nodes return
 		if($node instance of element()) then
 	 		if($node/name = $names) then
 				()
