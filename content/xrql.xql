@@ -88,7 +88,7 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 };
 
 declare variable $xrql:operators := ("eq","gt","ge","lt","le","ne");
-declare variable $xrql:methods := ("matches","exists");
+declare variable $xrql:methods := ("matches","exists","empty");
 
 declare function xrql:to-xq-string($value) {
 	(: get rid of arrays :)
