@@ -1,4 +1,5 @@
-<package xmlns="http://expath.org/ns/pkg" name="http://lagua.nl/pkg/xrql" abbrev="xrql" version="0.1" spec="1.0">
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://expath.org/ns/pkg" name="http://lagua.nl/pkg/xrql" abbrev="xrql" version="0.2" spec="1.0">
     <title>URL-based querying of models</title>
     <xquery>
         <namespace>http://lagua.nl/lib/xrql</namespace>
