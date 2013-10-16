@@ -1,4 +1,4 @@
-xquery version "1.0";
+xquery version "3.0";
 
 (:
  * This module provides RQL parsing and querying. For example:
@@ -88,19 +88,24 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 };
 
 declare variable $xrql:operators := ("eq","gt","ge","lt","le","ne");
-declare variable $xrql:methods := ("matches","exists");
+declare variable $xrql:methods := ("matches","exists","empty");
 
-declare function xrql:to-xq-string($value) {
+declare function xrql:declare-namespaces($node as element(),$nss as xs:string*) {
+	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
+};
+
+declare function xrql:to-xq-string($value as node()*) {
 	(: get rid of arrays :)
 	let $value := 
 		if(name($value/*[1]) eq "args") then
 			$value/*[1]
 		else
 			$value
+    let $v := $value/name/text()
 	return
-	if($value/name/text() = $xrql:operators) then
+	if($v = $xrql:operators) then
 		let $path := replace($value/args[1]/text(),"\.",":")
-		let $operator := $value/name/text()
+		let $operator := $v
 		let $target := xrql:converters-default($value/args[2]/text())
 		let $operator := 
 			if($target instance of xs:string) then
@@ -108,19 +113,26 @@ declare function xrql:to-xq-string($value) {
 			else
 				$xrql:operatorMap//map[@name eq $operator][1]/@operator
 		return concat($path," ",$operator," ", string($target))
-	else if($value/name/text() = $xrql:methods) then
+	else if($v = $xrql:methods) then
 		let $path := replace($value/args[1]/text(),"\.",":")
 		let $target :=
 			if($value/args[2]) then
 				concat(",'",$value/args[2]/text(),"'")
 			else
 				""
-		return concat($value/name/text(),"(",$path,$target,")")
-	else if($value/name/text() = ("and","or")) then
+		return concat($v,"(",$path,$target,")")
+    else if($v = "deep") then
+    	let $path := util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
+        let $expr := xrql:to-xq-string($value/args[2])
+		return concat($path,"[",$expr,"]")
+	else if($v = ("not")) then
+		let $expr := xrql:to-xq-string($value/args)
+		return concat("not(",$expr,")")
+	else if($v = ("and","or")) then
 		let $terms :=
 			for $x in $value/args return
 				xrql:to-xq-string($x)
-		return concat("(",string-join($terms, concat(" ",$value/name/text()," ")),")")
+		return concat("(",string-join($terms, concat(" ",$v," ")),")")
 	else
 		""
 };
@@ -332,7 +344,7 @@ declare function xrql:get-range($maxLimit as xs:integer) {
 };
 
 declare function xrql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
-	let $range := concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount)),"/",$totalCount)
+	let $range := concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
 	return
 	(
 		response:set-header("Accept-Ranges","items"),
@@ -738,6 +750,7 @@ declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAto
 		else
 			replace($query," ","%20")
 	let $query := replace($query,"%3A",":")
+	let $query := replace($query,"%2C",",")
 	let $query :=
 		if($xrql:jsonQueryCompatible) then
 			let $query := fn:replace($query,"%3C=","=le=")
