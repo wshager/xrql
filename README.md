@@ -12,7 +12,7 @@ Download eXist @ http://exist-db.org
 
 Install & clone xrql into the /eXist/webapp directory. To run the test:
 
-http://localhost:8080/exist/xrql/test.xql?price>1.10&sort(name)
+http://localhost:8080/exist/xrql/test/test.xql?price>1.10&sort(name)
 
 Paging is enabled through persvr/perstore Range header:
 
