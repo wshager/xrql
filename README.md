@@ -20,10 +20,6 @@ http://localhost:8080/exist/apps/xrql-test/test?price>1.10&sort(name)
 
 ---
 
-Paging is enabled through persvr/perstore Range header:
+Paging is enabled through the Range header:
 
 Range : items=0/10
-
-See https://github.com/persvr/perstore
-
-The Accept header is used for content negotiation. Featured types: application/json, application/xml, text/html, text/plain.
