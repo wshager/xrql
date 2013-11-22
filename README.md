@@ -18,8 +18,15 @@ Point the browser to:
 
 http://localhost:8080/exist/apps/xrql-test/test?price>1.10&sort(name)
 
----
+----
 
 Paging is enabled through the Range header:
 
 Range : items=0/10
+
+----
+
+Extensions:
+
+* search(path,query,range): performs a full-text query on indexes created by Lucene. Word ranges are all, any and phrase.
+* deep(path,expression): performs a query on nested items using the provided rql expression
