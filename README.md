@@ -12,9 +12,11 @@ Download and install eXist 2.x @ http://exist-db.org
 
 Build the package and install into eXist using the manager in the dashboard.
 
-To run the test, create an application "xrql-test" containing the files in the folder "test". Point to:
+To run the test, build an application from "xrql-test" located in the folder "test" and install into eXist.
 
-http://localhost:8080/exist/apps/xrql-test/test.xql?price>1.10&sort(name)
+Point the browser to:
+
+http://localhost:8080/exist/apps/xrql-test/test?price>1.10&sort(name)
 
 ---
 
