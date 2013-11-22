@@ -105,6 +105,16 @@ let $schema :=
     else
         ()
 let $data := util:binary-to-string(request:get-data())
+let $accept := request:get-header("Accept")
+let $null :=
+	if(matches($accept,"application/[json|javascript]")) then
+		util:declare-option("exist:serialize", "method=json media-type=application/json")
+	else if(matches($accept,"[text|application]/xml")) then
+		util:declare-option("exist:serialize", "method=xml media-type=application/xml")
+	else if(matches($accept,"text/html")) then
+		util:declare-option("exist:serialize", "method=html media-type=text/html")
+	else
+		()
 
 return
     if($model eq "") then
