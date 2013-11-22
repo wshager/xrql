@@ -45,6 +45,18 @@ declare function local:to-plain-xml($node as element()) as element()* {
 			}
 };
 
+declare function local:check-html($node as element()) {
+    <json:root>{
+        for $x in $node/node() return
+            if($x/node()) then
+                element {name($x)} {
+                    string($x/node())
+                }
+            else
+                $x
+    }</json:root>
+};
+
 declare function local:resolve-links($node as element(), $schema as element(), $store as xs:string) as element() {
     element json:root {
         $node/node(),
