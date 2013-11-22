@@ -17,7 +17,7 @@ declare function local:to-plain-xml($node as element()) as element()* {
     let $name := string(node-name($node))
     let $name :=
     	if($name = "json") then
-			"json:root"
+			"root"
 		else if($name = "pair" and $node/@name) then
 			$node/@name
 		else
@@ -46,7 +46,7 @@ declare function local:to-plain-xml($node as element()) as element()* {
 };
 
 declare function local:resolve-links($node as element(), $schema as element(), $store as xs:string) as element() {
-    element json:root {
+    element root {
         $node/node(),
         for $l in $schema/links return
             let $href := tokenize($l/href,"\?")
@@ -68,7 +68,7 @@ declare function local:resolve-links($node as element(), $schema as element(), $
                 else
                     let $q := xrql:parse($qstr,())
                     return element { $l/rel } {
-                        for $x in xrql:sequence(collection(resolve-uri($uri,$store || "/"))/json:root,$q,500,false()) return
+                        for $x in xrql:sequence(collection(resolve-uri($uri,$store || "/"))/root,$q,500,false()) return
                             element {"json:value"} {
         					    attribute {"json:array"} {"true"},
     						    $x/node()
@@ -89,7 +89,7 @@ let $schemastore := concat("/db/",$domain,"/model/Class")
 let $schemauri := concat($schemastore,"/",$model,".xml")
 let $schema :=
     if(doc-available($schemauri)) then
-        doc($schemauri)/json:root
+        doc($schemauri)/root
     else
         ()
 let $data := util:binary-to-string(request:get-data())
@@ -136,7 +136,7 @@ return
 			if($did) then
 			   $xml
 			else
-				element {"json:root"} {
+				element {"root"} {
 					$xml/@*,
 					$xml/*[name(.) != "id"],
 					element id {
@@ -144,8 +144,8 @@ return
 					}
 				}
 		let $doc :=
-			if(exists(collection($store)/json:root[id = $id])) then
-				base-uri(collection($store)/json:root[id = $id])
+			if(exists(collection($store)/root[id = $id])) then
+				base-uri(collection($store)/root[id = $id])
 			else
 				$id || ".xml"
 		let $res := xdb:store($store, $doc, $xml)
@@ -156,23 +156,23 @@ return
 				response:set-status-code(500)
 	else if($method="GET") then
 		if($id != "") then
-    		collection($store)/json:root[id = $id]
+    		collection($store)/root[id = $id]
 		else if($qstr ne "" or request:get-header("range") or sm:is-authenticated()) then
-    		element {"json:root"} {
-				for $x in xrql:sequence(collection($store)/json:root,$q,$maxLimit) return
+    		element {"root"} {
+				for $x in xrql:sequence(collection($store)/root,$q,$maxLimit) return
 					element {"json:value"} {
 						attribute {"json:array"} {"true"},
 						if($schema) then local:resolve-links($x,$schema,$store)/node() else $x/node()
 					}
 			}
         else
-            (element {"json:root"} {
+            (element {"root"} {
                 "Error: Guests are not allowed to query the entire collection"
             },
             response:set-status-code(403))
 	else if($method="DELETE") then
 		if($id != "") then
-			let $path := base-uri(collection($store)/json:root[id = $id])
+			let $path := base-uri(collection($store)/root[id = $id])
 			let $parts := tokenize($path,"/")
 			let $doc := $parts[last()]
 			let $parts := remove($parts,last())
