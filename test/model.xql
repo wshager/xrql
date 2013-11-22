@@ -14,9 +14,9 @@ Transform into xml serializable to json natively by eXist
 :)
 
 declare function local:to-plain-xml($node as element()) as element()* {
-	let $name := string(node-name($node))
-	let $name :=
-		if($name = "json") then
+    let $name := string(node-name($node))
+    let $name :=
+    	if($name = "json") then
 			"json:root"
 		else if($name = "pair" and $node/@name) then
 			$node/@name
@@ -45,20 +45,59 @@ declare function local:to-plain-xml($node as element()) as element()* {
 			}
 };
 
-let $sess := session:create()
+declare function local:resolve-links($node as element(), $schema as element(), $store as xs:string) as element() {
+    element json:root {
+        $node/node(),
+        for $l in $schema/links return
+            let $href := tokenize($l/href,"\?")
+            let $uri := $href[1]
+            let $qstr := $href[2]
+            let $qstr := string-join(
+                for $x in analyze-string($qstr, "\{([^}]*)\}")/* return
+                	if(local-name($x) eq "non-match") then
+            			$x
+            		else
+                        for $g in $x/fn:group
+                            return $node/*[local-name() eq $g]
+            )
+            return
+                if($l/resolution eq "lazy") then
+                    element { $l/rel } {
+                        element { "_ref" } { concat($uri,"?",$qstr) }
+                    }
+                else
+                    let $q := xrql:parse($qstr,())
+                    return element { $l/rel } {
+                        for $x in xrql:sequence(collection(resolve-uri($uri,$store || "/"))/json:root,$q,500,false()) return
+                            element {"json:value"} {
+        					    attribute {"json:array"} {"true"},
+    						    $x/node()
+                            }
+                    }
+    }
+};
+
 let $model := request:get-parameter("model","")
-let $locale := request:get-parameter("locale","")
 let $method := request:get-method()
 let $qstr := request:get-query-string()
 let $q := xrql:parse($qstr,())
 let $id := request:get-parameter("id","")
 let $maxLimit := 100
 let $domain := request:get-server-name()
-let $store := concat("/db/",$domain,"/",$locale,"/model/",$model)
+let $store := concat("/db/",$domain,"/model/",$model)
+let $schemastore := concat("/db/",$domain,"/model/Class")
+let $schemauri := concat($schemastore,"/",$model,".xml")
+let $schema :=
+    if(doc-available($schemauri)) then
+        doc($schemauri)/json:root
+    else
+        ()
 let $data := util:binary-to-string(request:get-data())
 
 return
-	if($method = ("PUT","POST")) then
+    if($model eq "") then
+        response:set-status-code(500)
+	else if($method = ("PUT","POST")) then
 		let $data := 
 			if($data != "") then
 				$data
@@ -107,15 +146,20 @@ return
 				response:set-status-code(500)
 	else if($method="GET") then
 		if($id != "") then
-			collection($store)/json:root[id = $id]
-		else
-			element {"json:root"} {
+    		collection($store)/json:root[id = $id]
+		else if($qstr ne "" or request:get-header("range") or sm:is-authenticated()) then
+    		element {"json:root"} {
 				for $x in xrql:sequence(collection($store)/json:root,$q,$maxLimit) return
 					element {"json:value"} {
 						attribute {"json:array"} {"true"},
-						 $x/node()
+						if($schema) then local:resolve-links($x,$schema,$store)/node() else $x/node()
 					}
 			}
+        else
+            (element {"json:root"} {
+                "Error: Guests are not allowed to query the entire collection"
+            },
+            response:set-status-code(403))
 	else if($method="DELETE") then
 		if($id != "") then
 			let $path := base-uri(collection($store)/json:root[id = $id])
