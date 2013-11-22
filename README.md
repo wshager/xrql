@@ -8,11 +8,15 @@ https://github.com/persvr/rql
 Test with eXist:
 --------
 
-Download eXist @ http://exist-db.org
+Download eXist 2.x @ http://exist-db.org
 
-Install & clone xrql into the /eXist/webapp directory. To run the test:
+Build the package and install into eXist using the manager in the dashboard.
 
-http://localhost:8080/exist/xrql/test/test.xql?price>1.10&sort(name)
+To run the test, create an application "xrql-test" containing the files in the folder "test".
+
+http://localhost:8080/exist/apps/xrql-test/test.xql?price>1.10&sort(name)
+
+---
 
 Paging is enabled through persvr/perstore Range header:
 
