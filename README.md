@@ -8,7 +8,7 @@ https://github.com/persvr/rql
 Test with eXist:
 --------
 
-Download eXist 2.x @ http://exist-db.org
+Download and install eXist 2.x @ http://exist-db.org
 
 Build the package and install into eXist using the manager in the dashboard.
 
