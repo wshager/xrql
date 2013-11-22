@@ -28,5 +28,5 @@ Range : items=0/10
 
 Extensions:
 
-* search(path,query,range): performs a full-text query on indexes created by Lucene. Word ranges are all, any and phrase.
+* search(path,query,range): performs a full-text query on Lucene indexes. Word ranges are all, any and phrase
 * deep(path,expression): performs a query on nested items using the provided rql expression
