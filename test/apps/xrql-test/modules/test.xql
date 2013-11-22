@@ -2,7 +2,7 @@ xquery version "3.0";
 
 import module namespace xrql="http://lagua.nl/lib/xrql";
 
-let $q := rql:parse(request:get-query-string(),())
+let $q := xrql:parse(request:get-query-string(),())
 
 let $data :=
 <root>
@@ -57,6 +57,8 @@ let $data :=
 </root>
 
 (: params: data, query, maxLimit :)
-return rql:sequence($data/item,$q,100)
+return element root {
+    xrql:sequence($data/item,$q,100)
+}
 
 
