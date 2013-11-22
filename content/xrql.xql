@@ -88,7 +88,7 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 };
 
 declare variable $xrql:operators := ("eq","gt","ge","lt","le","ne");
-declare variable $xrql:methods := ("matches","exists","empty");
+declare variable $xrql:methods := ("matches","exists","empty","search","contains");
 
 declare function xrql:declare-namespaces($node as element(),$nss as xs:string*) {
 	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
@@ -114,16 +114,35 @@ declare function xrql:to-xq-string($value as node()*) {
 				$xrql:operatorMap//map[@name eq $operator][1]/@operator
 		return concat($path," ",$operator," ", string($target))
 	else if($v = $xrql:methods) then
+		let $v := if($v eq "search") then "ft:query" else $v
 		let $path := replace($value/args[1]/text(),"\.",":")
-		let $target :=
+		let $range :=
+			if($value/args[3]) then
+				$value/args[3]/text()
+			else
+				"any"
+		let $target := 
 			if($value/args[2]) then
-				concat(",'",$value/args[2]/text(),"'")
+				if($v eq "ft:query" and $range eq "phrase") then
+					concat(",<phrase>",util:unescape-uri($value/args[2]/text(),"UTF-8"),"</phrase>")
+				else
+					concat(",",xrql:converters-default($value/args[2]/text()))
 			else
 				""
-		return concat($v,"(",$path,$target,")")
-    else if($v = "deep") then
-    	let $path := util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
-        let $expr := xrql:to-xq-string($value/args[2])
+		let $params := 
+			if($v eq "ft:query") then
+				concat(",<options><default-operator>",(
+					if($range eq "any") then
+						"or"
+					else
+						"and"
+				),"</default-operator></options>")
+			else
+				""
+		return concat($v,"(",$path,$target,$params,")")
+	else if($v = "deep") then
+		let $path := util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
+		let $expr := xrql:to-xq-string($value/args[2])
 		return concat($path,"[",$expr,"]")
 	else if($v = ("not")) then
 		let $expr := xrql:to-xq-string($value/args)
@@ -197,6 +216,10 @@ declare function xrql:to-xq($value as node()*) {
 };
 
 declare function xrql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer) {
+	xrql:sequence($items,$value, $maxLimit, true())
+};
+
+declare function xrql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $useRange as xs:boolean) {
 	let $accept := request:get-header("Accept")
 	let $null :=
 		if($accept = ("application/json","application/javascript")) then
@@ -208,7 +231,7 @@ declare function xrql:sequence($items as node()*,$value as node()*, $maxLimit as
 		else
 			()
 	let $q := xrql:to-xq($value/args)
-	return xrql:apply-xq($items,$q,$maxLimit)
+	return xrql:apply-xq($items,$q,$maxLimit,$useRange)
 };
 
 declare variable $xrql:operatorMap := element root {
@@ -263,7 +286,7 @@ declare function local:stringToValue($string as xs:string, $parameters){
 			(: check for possible typecast :)
 			let $cast := $parts[1]
 			return
-				if(matches($cast,"^([^.]*(xs|fn)\.[^.]+)|([^.]*(number|text|\-case))$"))then
+				if(matches($cast,"^([^.]*(xs|fn)\.[^.]+)|([^.]*(number|text|string|\-case))$"))then
 					let $path := string-join(subsequence($parts,2,count($parts)),":")
 					return concat($cast,"(",$path,")")
 				else
@@ -352,18 +375,28 @@ declare function xrql:set-range-header($limit as xs:integer,$start as xs:integer
 	)
 };
 
-declare function xrql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer){
+declare function xrql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer) {
+	xrql:apply-xq($items,$q,$maxLimit,true())
+};
+
+declare function xrql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
 	let $filter := $q/terms/text()
 	let $limit := $q/limit/text()
 	let $limit := 
 		if($q/limit/text()) then
 			$q/limit/text()
-		else
+		else if($useRange) then
 			xrql:get-range($maxLimit)
+		else
+			"0,0,0"
 	let $range := tokenize($limit,",")
 	let $limit := xs:integer($range[1])
 	let $start := xs:integer($range[2])
-	let $maxCount := xs:integer($range[3])
+	let $maxCount :=
+		if($useRange) then
+			xs:integer($range[3])
+		else
+			0
 	let $sort := string-join(for $x in tokenize($q/sort,",") return concat("$x/",$x),",")
 	(: are there items to return? :)
 	let $items := 
@@ -427,7 +460,10 @@ declare function xrql:converters-auto($string){
 		let $number := number($string)
 		return 
 			if($number ne 0 and string($number) ne $string) then
-				concat("'",util:unescape-uri($string,"UTF-8"),"'")
+				if(contains($string,"(")) then
+					util:unescape-uri($string,"UTF-8")
+				else
+					concat("'",util:unescape-uri($string,"UTF-8"),"'")
 			else
 				$number
 };
@@ -761,7 +797,7 @@ declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAto
 		else
 			$query
 	let $query :=
-		if(fn:contains($query,"/")) then
+		if(contains($query,"/")) then
 			let $tokens := tokenize($query,concat("",$xrql:ignore,"*\/[",$xrql:ignore,"\/]*"))
 			let $tokens := 
 				for $x in $tokens
