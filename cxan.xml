@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://cxan.org/ns/package" id="xqjson">
-    <abstract>An XQuery module for URL-based querying of models</abstract>
+<package xmlns="http://cxan.org/ns/package" id="xrql">
+    <abstract>An XQuery module for URL-based querying</abstract>
     <author id="wshager">Wouter Hager</author>
     <maintainer id="wshager">Wouter Hager</maintainer>
     <home>http://github.com/wshager/xrql</home>

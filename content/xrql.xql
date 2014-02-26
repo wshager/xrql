@@ -107,12 +107,19 @@ declare function xrql:to-xq-string($value as node()*) {
 		let $path := replace($value/args[1]/text(),"\.",":")
 		let $operator := $v
 		let $target := xrql:converters-default($value/args[2]/text())
-		let $operator := 
-			if($target instance of xs:string) then
+		(: ye olde wildcard :)
+		let $operator :=
+			if($operator eq "eq" and contains($target,"*")) then
+				"wildcardmatch"
+			else if($target instance of xs:string) then
 				$operator
 			else
 				$xrql:operatorMap//map[@name eq $operator][1]/@operator
-		return concat($path," ",$operator," ", string($target))
+		return
+			if($operator eq "wildcardmatch") then
+				concat("matches(",$path,",",replace($target,"\*",".*"),",'i'",")")
+			else
+				concat($path," ",$operator," ", string($target))
 	else if($v = $xrql:methods) then
 		let $v := if($v eq "search") then "ft:query" else $v
 		let $path := replace($value/args[1]/text(),"\.",":")
