@@ -117,7 +117,7 @@ declare function xrql:to-xq-string($value as node()*) {
 				$xrql:operatorMap//map[@name eq $operator][1]/@operator
 		return
 			if($operator eq "wildcardmatch") then
-				concat("matches(",$path,",",replace($target,"\*",".*"),",'i'",")")
+				concat("matches(^",$path,",",replace($target,"\*",".*")$,",'i'",")")
 			else
 				concat($path," ",$operator," ", string($target))
 	else if($v = $xrql:methods) then
