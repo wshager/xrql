@@ -5,55 +5,55 @@ xquery version "3.0";
  * var parsed = require("./parser").parse("b=3&le(c,5)");
  :)
 
-module namespace xrql="http://lagua.nl/lib/xrql";
+module namespace rql="http://lagua.nl/lib/rql";
 
 declare namespace text="http://exist-db.org/xquery/text";
 declare namespace transform="http://exist-db.org/xquery/transform";
 declare namespace request="http://exist-db.org/xquery/request";
 declare namespace response="http://exist-db.org/xquery/response";
 
-declare function xrql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
+declare function rql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
     for $node in $nodes return
 		if($node instance of element()) then
 	 		if($node/name = $names) then
 				()
 			else
 				element {node-name($node)} {
-					xrql:remove-elements-by-name($node/node(), $names)
+					rql:remove-elements-by-name($node/node(), $names)
 				}
 		else if ($node instance of document-node())
-			then xrql:remove-elements-by-name($node/node(), $names)
+			then rql:remove-elements-by-name($node/node(), $names)
 		else
 			$node
 };
 
-declare function xrql:remove-elements-by-property($nodes as node()*, $properties as xs:string*) as node()* {
+declare function rql:remove-elements-by-property($nodes as node()*, $properties as xs:string*) as node()* {
 	for $node in $nodes return
 		if($node instance of element()) then
 	 		if($node/args[1] = $properties) then
 				()
 			else
 				element {node-name($node)} {
-					xrql:remove-elements-by-property($node/node(), $properties)
+					rql:remove-elements-by-property($node/node(), $properties)
 				}
 		else if ($node instance of document-node())
-			then xrql:remove-elements-by-property($node/node(), $properties)
+			then rql:remove-elements-by-property($node/node(), $properties)
 		else
 			$node
 };
 
-declare function xrql:remove-nested-conjunctions($nodes as node()*) as node()* {
+declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 	for $node in $nodes return
 		if($node instance of element()) then
 			if($node/name = ("and","or") and count($node/args) = 0) then
 				()
 	 		else if($node/name = ("and","or") and count($node/args) = 1) then
 				element {node-name($node)} {
-					xrql:remove-nested-conjunctions($node/args/*)
+					rql:remove-nested-conjunctions($node/args/*)
 				}
 			else
 				element {node-name($node)} {
-					xrql:remove-nested-conjunctions($node/node())
+					rql:remove-nested-conjunctions($node/node())
 				}
 		else
 			$node
@@ -87,14 +87,14 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 )
 };
 
-declare variable $xrql:operators := ("eq","gt","ge","lt","le","ne");
-declare variable $xrql:methods := ("matches","exists","empty","search","contains");
+declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
+declare variable $rql:methods := ("matches","exists","empty","search","contains");
 
-declare function xrql:declare-namespaces($node as element(),$nss as xs:string*) {
+declare function rql:declare-namespaces($node as element(),$nss as xs:string*) {
 	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
 };
 
-declare function xrql:to-xq-string($value as node()*) {
+declare function rql:to-xq-string($value as node()*) {
 	(: get rid of arrays :)
 	let $value := 
 		if(name($value/*[1]) eq "args") then
@@ -103,24 +103,31 @@ declare function xrql:to-xq-string($value as node()*) {
 			$value
     let $v := $value/name/text()
 	return
-	if($v = $xrql:operators) then
+	if($v = $rql:operators) then
 		let $path := replace($value/args[1]/text(),"\.",":")
 		let $operator := $v
-		let $target := xrql:converters-default($value/args[2]/text())
+		let $target := rql:converters-default($value/args[2]/text())
 		(: ye olde wildcard :)
 		let $operator :=
 			if($operator eq "eq" and contains($target,"*")) then
 				"wildcardmatch"
-			else if($target instance of xs:string) then
-				$operator
+			else if($target instance of xs:double) then
+				(: reverse lookup :)
+				let $operator := 
+					for $k in map:keys($rql:operatorMap) return
+					    if($rql:operatorMap($k) eq $operator) then
+					        $k
+					    else
+					        ()
+				return $operator[last()]
 			else
-				$xrql:operatorMap//map[@name eq $operator][1]/@operator
+				$operator
 		return
 			if($operator eq "wildcardmatch") then
-				concat("matches(^",$path,",",replace($target,"\*",".*")$,",'i'",")")
+				concat("matches(",$path,",'^",replace($value/args[2]/text(),"\*",".*"),"$','i'",")")
 			else
 				concat($path," ",$operator," ", string($target))
-	else if($v = $xrql:methods) then
+	else if($v = $rql:methods) then
 		let $v := if($v eq "search") then "ft:query" else $v
 		let $path := replace($value/args[1]/text(),"\.",":")
 		let $range :=
@@ -133,7 +140,7 @@ declare function xrql:to-xq-string($value as node()*) {
 				if($v eq "ft:query" and $range eq "phrase") then
 					concat(",<phrase>",util:unescape-uri($value/args[2]/text(),"UTF-8"),"</phrase>")
 				else
-					concat(",",xrql:converters-default($value/args[2]/text()))
+					concat(",",rql:converters-default($value/args[2]/text()))
 			else
 				""
 		let $params := 
@@ -149,39 +156,44 @@ declare function xrql:to-xq-string($value as node()*) {
 		return concat($v,"(",$path,$target,$params,")")
 	else if($v = "deep") then
 		let $path := util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
-		let $expr := xrql:to-xq-string($value/args[2])
+		let $expr := rql:to-xq-string($value/args[2])
 		return concat($path,"[",$expr,"]")
 	else if($v = ("not")) then
-		let $expr := xrql:to-xq-string($value/args)
+		let $expr := rql:to-xq-string($value/args)
 		return concat("not(",$expr,")")
 	else if($v = ("and","or")) then
 		let $terms :=
 			for $x in $value/args return
-				xrql:to-xq-string($x)
+				rql:to-xq-string($x)
 		return concat("(",string-join($terms, concat(" ",$v," ")),")")
 	else
 		""
 };
 
-declare function xrql:get-element-by-name($value as node()*,$name as xs:string) {
+declare function rql:get-element-by-name($value as node()*,$name as xs:string) {
 	if($value/name and $value/name/text() = $name) then
 		$value
 	else
 		for $arg in $value/args return
-			xrql:get-element-by-name($arg,$name)
+			rql:get-element-by-name($arg,$name)
 };
 
-declare function xrql:get-element-by-property($value as node()*,$prop as xs:string) {
+declare function rql:get-elements-by-name($value as node()*,$name as xs:string*) {
+	for $n in $name return
+		rql:get-element-by-name($value,$n)
+};
+
+declare function rql:get-element-by-property($value as node()*,$prop as xs:string) {
 	for $arg in $value/args return
 		let $r := if($arg/position() = 1 and $arg/text() = $prop) then
 			subsequence($value/args,2,count($value/args))
 		else
 			()
-		return $r | xrql:get-element-by-property($arg,$prop)
+		return $r | rql:get-element-by-property($arg,$prop)
 };
 
-declare function xrql:to-xq($value as node()*) {
-	let $sort := xrql:get-element-by-name($value,"sort")
+declare function rql:to-xq($value as node()*) {
+	let $sort := rql:get-element-by-name($value,"sort")
 	let $sort :=
 			for $x in $sort/args/text() return
 				let $x := util:unescape-uri(replace($x,"\.",":"),"UTF-8")
@@ -192,10 +204,11 @@ declare function xrql:to-xq($value as node()*) {
 						substring($x,2)
 					else
 						$x
-	let $limit := xrql:get-element-by-name($value,"limit")
-	let $filter := xrql:remove-elements-by-name($value,("limit","sort"))
-	let $filter := xrql:remove-nested-conjunctions($filter)
-	let $filter := xrql:to-xq-string($filter)
+	let $limit := rql:get-element-by-name($value,"limit")
+	let $special := rql:get-elements-by-name($value,("sum","mean","avg","max","min","values","distinct-values"))
+	let $filter := rql:remove-elements-by-name($value,("limit","sort","sum","mean","avg","max","min","values","distinct-values"))
+	let $filter := rql:remove-nested-conjunctions($filter)
+	let $filter := rql:to-xq-string($filter)
 	return
 		element root {
 			element sort {
@@ -218,48 +231,34 @@ declare function xrql:to-xq($value as node()*) {
 			},
 			element terms {
 				$filter
+			},
+			element special {
+				(: use only the first, special may not be combined :)
+				$special[1]
 			}
 		}
 };
 
-declare function xrql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer) {
-	xrql:sequence($items,$value, $maxLimit, true())
+declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer) {
+	rql:sequence($items,$value, $maxLimit, true())
 };
 
-declare function xrql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $useRange as xs:boolean) {
-	let $q := xrql:to-xq($value/args)
-	return xrql:apply-xq($items,$q,$maxLimit,$useRange)
+declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $useRange as xs:boolean) {
+	let $q := rql:to-xq($value/args)
+	return rql:apply-xq($items,$q,$maxLimit,$useRange)
 };
 
-declare variable $xrql:operatorMap := element root {
-	element map {
-		attribute operator {"="},
-		attribute name {"eq"}
-	},
-	element map {
-		attribute operator {"=="},
-		attribute name {"eq"}
-	},
-	element map {
-		attribute operator {">"},
-		attribute name {"gt"}
-	},
-	element map {
-		attribute operator {">="},
-		attribute name {"ge"}
-	},
-	element map {
-		attribute operator {"<"},
-		attribute name {"lt"}
-	},
-	element map {
-		attribute operator {"<="},
-		attribute name {"le"}
-	},
-	element map {
-		attribute operator {"!="},
-		attribute name {"ne"}
-	}
+declare variable $rql:operatorMap := map {
+	"=" := "eq",
+	"==" := "eq",
+	">" := "gt",
+	">=" := "ge",
+	"<" := "lt",
+	"<=" := "le",
+	"!=" := "ne",
+	"values" := "ne",
+	"!=" := "distinct-values",
+	"mean" := "avg"
 };
 
 declare function local:stringToValue($string as xs:string, $parameters){
@@ -293,7 +292,7 @@ declare function local:stringToValue($string as xs:string, $parameters){
 	return $string
 };
 
-declare function xrql:get-range($maxLimit as xs:integer) {
+declare function rql:get-range($maxLimit as xs:integer) {
 	(:
 	// from https://github.com/persvr/pintura/blob/master/jsgi/rest-store.js
 	var limit = Math.min(model.maxLimit||Infinity, model.defaultLimit||Infinity) || Infinity;
@@ -363,7 +362,7 @@ declare function xrql:get-range($maxLimit as xs:integer) {
 			concat($limit,",",$start,",",$maxCount)
 };
 
-declare function xrql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
+declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
 	let $range := concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
 	return
 	(
@@ -372,18 +371,19 @@ declare function xrql:set-range-header($limit as xs:integer,$start as xs:integer
 	)
 };
 
-declare function xrql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer) {
-	xrql:apply-xq($items,$q,$maxLimit,true())
+declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer) {
+	rql:apply-xq($items,$q,$maxLimit,true())
 };
 
-declare function xrql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
+declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
 	let $filter := $q/terms/text()
 	let $limit := $q/limit/text()
+	let $special := $q/special/args
 	let $limit := 
 		if($q/limit/text()) then
 			$q/limit/text()
 		else if($useRange) then
-			xrql:get-range($maxLimit)
+			rql:get-range($maxLimit)
 		else
 			"0,0,0"
 	let $range := tokenize($limit,",")
@@ -397,28 +397,37 @@ declare function xrql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:i
 	let $sort := string-join(for $x in tokenize($q/sort,",") return concat("$x/",$x),",")
 	(: are there items to return? :)
 	let $items := 
-			if($filter ne "") then
-				util:eval(concat("$items[",$filter,"]"))
-			else
-				$items
-		let $items := 
-			if($sort ne "") then
-				util:eval(concat("for $x in $items order by ", $sort, " return $x"))
-			else
-				$items
+		if($filter ne "") then
+			util:eval(concat("$items[",$filter,"]"))
+		else
+			$items
+	let $items :=
+		if($special and $special/name) then
+			let $operator := $special/name/text()
+			let $operator := 
+				if(map:contains($rql:operatorMap,$operator)) then
+					$rql:operatorMap($operator)
+				else
+					$operator
+			let $path := $special/args[1]/text()
+			return util:eval($operator || "($items/" || $path || ")")
+		else if($sort ne "") then
+			util:eval(concat("for $x in $items order by ", $sort, " return $x"))
+		else
+			$items
 	return 
-		if($maxCount) then
-			xrql:apply-paging($items,$limit,$start,$maxCount)
+		if($maxCount and not($special)) then
+			rql:apply-paging($items,$limit,$start,$maxCount)
 		else
 			$items
 };
 
-declare function xrql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
+declare function rql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
 	if($maxCount and $limit and $start < count($items)) then
 		(: sequence is 1-based :)
 		(: this will return the filtered count :)
 		let $totalCount := count($items)
-		let $null := xrql:set-range-header($limit,$start,$maxCount,$totalCount)
+		let $null := rql:set-range-header($limit,$start,$maxCount,$totalCount)
 		let $items :=
 			if($limit and $limit < 1 div 0e0) then
 				subsequence($items,$start+1,$limit)
@@ -426,13 +435,13 @@ declare function xrql:apply-paging($items as node()*,$limit as xs:integer,$start
 				$items
 		return $items
 	else if($maxCount) then
-		let $null := xrql:set-range-header($limit,$start,$maxCount,0)
+		let $null := rql:set-range-header($limit,$start,$maxCount,0)
 		return ()
 	else
 		$items
 };
 
-declare variable $xrql:autoConvertedString := (
+declare variable $rql:autoConvertedString := (
 	"true",
 	"false",
 	"null",
@@ -441,7 +450,7 @@ declare variable $xrql:autoConvertedString := (
 	"-Infinity"
 );
 
-declare variable $xrql:autoConvertedValue := (
+declare variable $rql:autoConvertedValue := (
 	"true()",
 	"false()",
 	"()",
@@ -450,9 +459,9 @@ declare variable $xrql:autoConvertedValue := (
 	"-1 div 0e0"
 );
 
-declare function xrql:converters-auto($string){
-	if($xrql:autoConvertedString = $string) then
-		$xrql:autoConvertedValue[index-of($xrql:autoConvertedString,$string)]
+declare function rql:converters-auto($string){
+	if($rql:autoConvertedString = $string) then
+		$rql:autoConvertedValue[index-of($rql:autoConvertedString,$string)]
 	else
 		let $number := number($string)
 		return 
@@ -464,10 +473,10 @@ declare function xrql:converters-auto($string){
 			else
 				$number
 };
-declare function xrql:converters-number($x){
+declare function rql:converters-number($x){
 	number($x)
 };
-declare function xrql:converters-epoch($x){
+declare function rql:converters-epoch($x){
 	(:
 		var date = new Date(+x);
 		if (isNaN(date.getTime())) {
@@ -477,7 +486,7 @@ declare function xrql:converters-epoch($x){
 		:)
 	$x
 };
-declare function xrql:converters-isodate($x){
+declare function rql:converters-isodate($x){
 	$x
 	(:
 		// four-digit year
@@ -487,7 +496,7 @@ declare function xrql:converters-isodate($x){
 		return exports.converters.date(date);
 	:)
 };
-declare function xrql:converters-date($x){
+declare function rql:converters-date($x){
 	$x
 	(:
 		var isoDate = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}(?:\.\d*)?)Z$/.exec(x);
@@ -504,22 +513,22 @@ declare function xrql:converters-date($x){
 };
 
 (: original character class [\+\*\$\-:\w%\._] or with comma :)
-declare variable $xrql:ignore := "[A-Za-z0-9\+\*\$\-:%\._]";
-declare variable $xrql:ignorec := "[A-Za-z0-9\+\*\$\-:%\._,]";
+declare variable $rql:ignore := "[A-Za-z0-9\+\*\$\-:%\._]";
+declare variable $rql:ignorec := "[A-Za-z0-9\+\*\$\-:%\._,]";
 
-declare function xrql:converters-boolean($x){
+declare function rql:converters-boolean($x){
 	$x eq "true"
 };
-declare function xrql:converters-string($string){
+declare function rql:converters-string($string){
 	xmldb:decode-uri($string)
 };
-declare function xrql:converters-re($x){
+declare function rql:converters-re($x){
 	xmldb:decode-uri($x)
 };
-declare function xrql:converters-RE($x){
+declare function rql:converters-RE($x){
 	xmldb:decode-uri($x)
 };
-declare function xrql:converters-glob($x){
+declare function rql:converters-glob($x){
 	$x
 	(:
 		var s = decodeURIComponent(x).replace(/([\\|\||\(|\)|\[|\{|\^|\$|\*|\+|\?|\.|\<|\>])/g, function(x){return '\\'+x;}).replace(/\\\*/g,'.*').replace(/\\\?/g,'.?');
@@ -536,19 +545,23 @@ declare function xrql:converters-glob($x){
 // RP.converters["default"] = RQ.converter.string;
 :)
 
-declare function xrql:converters-default($x) {
-	xrql:converters-auto($x)
+declare function rql:converters-default($x) {
+	rql:converters-auto($x)
 };
 
-declare variable $xrql:primaryKeyName := 'id';
-declare variable $xrql:lastSeen := ('sort', 'select', 'values', 'limit');
-declare variable $xrql:jsonQueryCompatible := true();
+declare variable $rql:primaryKeyName := 'id';
+declare variable $rql:jsonQueryCompatible := true();
 
-declare function xrql:parse($query as xs:string?, $parameters as xs:anyAtomicType?) {
-	let $query:= xrql:parse-query($query,$parameters)
+
+declare function rql:parse($query as xs:string) {
+	rql:parse($query, ())
+};
+
+declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType?) {
+	let $query:= rql:parse-query($query,$parameters)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
 	return if($query ne "") then
-		let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$xrql:ignore,"+)(\(?)"),4)
+		let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
 		
 		let $analysis :=
 			for $n in 1 to count($analysis) return
@@ -776,7 +789,7 @@ declare function local:set-conjunction($query as xs:string) {
 	return concat($pre,string-join($groups,""),string-join($post,""))
 };
 
-declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAtomicType?){
+declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtomicType?){
 	let $query :=
 		if(not($query)) then
 			""
@@ -785,7 +798,7 @@ declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAto
 	let $query := replace($query,"%3A",":")
 	let $query := replace($query,"%2C",",")
 	let $query :=
-		if($xrql:jsonQueryCompatible) then
+		if($rql:jsonQueryCompatible) then
 			let $query := fn:replace($query,"%3C=","=le=")
 			let $query := fn:replace($query,"%3E=","=ge=")
 			let $query := fn:replace($query,"%3C","=lt=")
@@ -795,7 +808,7 @@ declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAto
 			$query
 	let $query :=
 		if(contains($query,"/")) then
-			let $tokens := tokenize($query,concat("",$xrql:ignore,"*\/[",$xrql:ignore,"\/]*"))
+			let $tokens := tokenize($query,concat("",$rql:ignore,"*\/[",$rql:ignore,"\/]*"))
 			let $tokens := 
 				for $x in $tokens
 					return concat("(",replace($x,"\/", ","), ")")
@@ -803,7 +816,7 @@ declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAto
 		else
 			$query
 	(: convert FIQL to normalized call syntax form :)
-	let $analysis := local:analyze-string-ordered($query, concat("(\(",$xrql:ignorec,"+\)|",$xrql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$xrql:ignorec,"+\)|",$xrql:ignore,"*|)"),4)
+	let $analysis := local:analyze-string-ordered($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"),4)
 	                                                              (:<--------------- property ------------><--------- operator --------><---------------- value ---------------->:)
 	let $analysis :=
 		for $n in 1 to count($analysis) return
@@ -817,8 +830,8 @@ declare function xrql:parse-query($query as xs:string?, $parameters as xs:anyAto
 					let $value := $x/match[4]/text()
 					let $operator := 
 						if(string-length($operator) < 3) then
-							if($xrql:operatorMap//map[@operator=$operator]) then
-								$xrql:operatorMap//map[@operator=$operator]/@name
+							if(map:contains($rql:operatorMap,$operator)) then
+								$rql:operatorMap($operator)
 							else
 								(:throw new URIError("Illegal operator " + operator):)
 								()

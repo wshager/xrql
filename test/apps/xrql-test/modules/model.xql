@@ -3,7 +3,7 @@ xquery version "3.0";
 import module namespace json="http://www.json.org";
 import module namespace xdb="http://exist-db.org/xquery/xmldb";
 import module namespace xqjson="http://xqilla.sourceforge.net/lib/xqjson";
-import module namespace xrql="http://lagua.nl/lib/xrql";
+import module namespace rql="http://lagua.nl/lib/rql";
 
 declare namespace output = "http://www.w3.org/2010/xslt-xquery-serialization";
 declare option output:method "json";
@@ -66,9 +66,9 @@ declare function local:resolve-links($node as element(), $schema as element(), $
                         element { "_ref" } { concat($uri,"?",$qstr) }
                     }
                 else
-                    let $q := xrql:parse($qstr,())
+                    let $q := rql:parse($qstr,())
                     return element { $l/rel } {
-                        for $x in xrql:sequence(collection(resolve-uri($uri,$store || "/"))/root,$q,500,false()) return
+                        for $x in rql:sequence(collection(resolve-uri($uri,$store || "/"))/root,$q,500,false()) return
                             element {"json:value"} {
         					    attribute {"json:array"} {"true"},
     						    $x/node()
@@ -80,7 +80,7 @@ declare function local:resolve-links($node as element(), $schema as element(), $
 let $model := request:get-parameter("model","")
 let $method := request:get-method()
 let $qstr := request:get-query-string()
-let $q := xrql:parse($qstr,())
+let $q := rql:parse($qstr,())
 let $id := request:get-parameter("id","")
 let $maxLimit := 100
 let $domain := request:get-server-name()
@@ -159,7 +159,7 @@ return
     		collection($store)/root[id = $id]
 		else if($qstr ne "" or request:get-header("range") or sm:is-authenticated()) then
     		element {"root"} {
-				for $x in xrql:sequence(collection($store)/root,$q,$maxLimit) return
+				for $x in rql:sequence(collection($store)/root,$q,$maxLimit) return
 					element {"json:value"} {
 						attribute {"json:array"} {"true"},
 						if($schema) then local:resolve-links($x,$schema,$store)/node() else $x/node()
