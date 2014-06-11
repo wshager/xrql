@@ -12,6 +12,22 @@ declare namespace transform="http://exist-db.org/xquery/transform";
 declare namespace request="http://exist-db.org/xquery/request";
 declare namespace response="http://exist-db.org/xquery/response";
 
+
+declare function rql:to-string($q as node()*) {
+    if($q/name) then
+        concat($q/name,"(",
+            string-join(
+                for $x in $q/args return
+                    if($x/args) then
+                        rql:to-string($x)
+                    else
+                        $x
+            ,",")
+        ,")")
+    else
+       rql:to-string($q/args) 
+};
+
 declare function rql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
     for $node in $nodes return
 		if($node instance of element()) then
