@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://expath.org/ns/pkg" name="http://lagua.nl/pkg/rql" abbrev="rql" version="0.2" spec="1.0">
-    <title>XRQL: URL-based querying</title>
+    <title>RQL: URL-based querying</title>
     <xquery>
         <namespace>http://lagua.nl/lib/rql</namespace>
         <file>rql.xql</file>
