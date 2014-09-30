@@ -104,7 +104,7 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 };
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
-declare variable $rql:methods := ("matches","exists","empty","search","contains");
+declare variable $rql:methods := ("matches","exists","empty","search","contains","in");
 
 declare function rql:declare-namespaces($node as element(),$nss as xs:string*) {
 	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
@@ -144,7 +144,10 @@ declare function rql:to-xq-string($value as node()*) {
 			else
 				concat($path," ",$operator," ", string($target))
 	else if($v = $rql:methods) then
-		let $v := if($v eq "search") then "ft:query" else $v
+		let $v :=
+			if($v eq "search") then
+				"ft:query"
+			else $v
 		let $path := replace($value/args[1]/text(),"\.",":")
 		let $range :=
 			if($value/args[3]) then
@@ -155,6 +158,8 @@ declare function rql:to-xq-string($value as node()*) {
 			if($value/args[2]) then
 				if($v eq "ft:query" and $range eq "phrase") then
 					concat(",<phrase>",util:unescape-uri($value/args[2]/text(),"UTF-8"),"</phrase>")
+				else if($v eq "in") then
+					string-join(for $x in $value/args[2]/args return rql:converters-default($x/text()),",")
 				else
 					concat(",",rql:converters-default($value/args[2]/text()))
 			else
@@ -169,7 +174,11 @@ declare function rql:to-xq-string($value as node()*) {
 				),"</default-operator></options>")
 			else
 				""
-		return concat($v,"(",$path,$target,$params,")")
+		return
+			if($v eq "in") then
+				concat($path,"=(",$target,")")
+			else
+				concat($v,"(",$path,$target,$params,")")
 	else if($v = "deep") then
 		let $path := util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
 		let $expr := rql:to-xq-string($value/args[2])
