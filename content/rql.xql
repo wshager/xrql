@@ -24,8 +24,10 @@ declare function rql:to-string($q as node()*) {
                         $x
             ,",")
         ,")")
+    else if($q/args) then
+       rql:to-string($q/args)
     else
-       rql:to-string($q/args) 
+    	"" 
 };
 
 declare function rql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
