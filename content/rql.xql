@@ -109,7 +109,7 @@ declare function local:analyze-string-ordered($string as xs:string, $regex as xs
 };
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
-declare variable $rql:methods := ("matches","exists","empty","search","contains","in");
+declare variable $rql:methods := ("matches","exists","empty","search","contains","in","string","integer","boolean","lower-case","upper-case");
 
 declare function rql:declare-namespaces($node as element(),$nss as xs:string*) {
 	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
