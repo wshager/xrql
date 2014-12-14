@@ -25,7 +25,10 @@ declare function rql:to-string($q as node()*) {
             ,",")
         ,")")
     else if($q/args) then
-       rql:to-string($q/args)
+       if($q/args/*) then
+            rql:to-string($q/args)
+        else
+            "(" || string-join($q/args,",") || ")"
     else
     	"" 
 };
@@ -595,7 +598,7 @@ declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType
 				let $x := $analysis[$n]
 				return
 					if(name($x) eq "nomatch") then
-						replace($x,"\(","<args>")
+						replace(replace($x,",",""),"\(","<args>")
 					else
 						let $property := $x/match[1]/text()
 						let $operator := $x/match[2]/text()
