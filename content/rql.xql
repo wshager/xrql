@@ -80,34 +80,6 @@ declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 			$node
 };
 
-declare function local:analyze-string-ordered($string as xs:string, $regex as xs:string,$n as xs:integer ) {
- transform:transform   
-(<any/>, 
-<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="2.0"> 
-	<xsl:template match='/' >
-		<xsl:analyze-string regex="{$regex}" select="'{$string}'" > 
-			<xsl:matching-substring>
-				<matches>
-					<xsl:for-each select="1 to {$n}">
-						<match>
-							<xsl:attribute name="n"><xsl:value-of select="."/></xsl:attribute>
-							<xsl:value-of select="regex-group(.)"/>  
-						</match>
-					</xsl:for-each>
-				</matches>
-			</xsl:matching-substring>
-			<xsl:non-matching-substring>
-				<nomatch>
-					<xsl:value-of select="."/>  
-				</nomatch>
-			</xsl:non-matching-substring>  
-		</xsl:analyze-string>
-	</xsl:template>
-</xsl:stylesheet>,
-()
-)
-};
-
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 declare variable $rql:methods := ("matches","exists","empty","search","contains","in");
 
@@ -591,22 +563,20 @@ declare function rql:parse($query as xs:string?, $parameters as xs:anyAtomicType
 	let $query:= rql:parse-query($query,$parameters)
 	(: (\))|([&\|,])?([\+\*\$\-:\w%\._]*)(\(?) :)
 	return if($query ne "") then
-		let $analysis := local:analyze-string-ordered($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"),4)
+		let $analysis := analyze-string($query, concat("(\))|(,)?(",$rql:ignore,"+)(\(?)"))
 		
 		let $analysis :=
-			for $n in 1 to count($analysis) return
-				let $x := $analysis[$n]
-				return
-					if(name($x) eq "nomatch") then
+			for $x in $analysis/* return
+					if(name($x) eq "non-match") then
 						replace(replace($x,",",""),"\(","<args>")
 					else
-						let $property := $x/match[1]/text()
-						let $operator := $x/match[2]/text()
-						let $value := $x/match[4]/text()
-						let $closedParen := $x/match[1]/text()
-						let $delim := $x/match[2]/text()
-						let $propertyOrValue := $x/match[3]/text()
-						let $openParen := $x/match[4]/text()
+						let $property := $x/fn:group[@nr=1]/text()
+						let $operator := $x/fn:group[@nr=2]/text()
+						let $value := $x/fn:group[@nr=4]/text()
+						let $closedParen := $x/fn:group[@nr=1]/text()
+						let $delim := $x/fn:group[@nr=2]/text()
+						let $propertyOrValue := $x/fn:group[@nr=3]/text()
+						let $openParen := $x/fn:group[@nr=4]/text()
 
 				let $r := 
 					if($openParen) then
@@ -650,15 +620,15 @@ declare function local:no-conjunction($seq,$hasopen) {
 };
 
 declare function local:set-conjunction($query as xs:string) {
-	let $parts := local:analyze-string-ordered($query,"(\()|(&amp;)|(\|)|(\))",4)
+	let $parts := analyze-string($query,"(\()|(&amp;)|(\|)|(\))")/*
 	let $groups := 
 		for $i in 1 to count($parts) return
-			if(name($parts[$i]) eq "nomatch") then
+			if(name($parts[$i]) eq "non-match") then
 				element group {
 					$parts[$i]/text()
 				}
 			else
-			let $p := $parts[$i]//match/text()
+			let $p := $parts[$i]/fn:group/text()
 			return
 				if($p eq "(") then
 						element group {
@@ -838,26 +808,34 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 			$query
 	let $query :=
 		if(contains($query,"/")) then
-			let $tokens := tokenize($query,concat("",$rql:ignore,"*\/[",$rql:ignore,"\/]*"))
-			let $tokens := 
-				for $x in $tokens
-					return concat("(",replace($x,"\/", ","), ")")
-			return string-join($tokens,"")
+			let $tokens := tokenize($query,concat("",$rql:ignore,"*/",substring($rql:ignore,1,string-length($rql:ignore)-1),"/]*"))
+			let $replaced := fold-left(?,$query,function($q, $x) {
+				if($x) then
+					replace($q,$x,"?")
+				else
+					$q
+			})
+			let $tokens := tokenize($replaced($tokens),"\?")
+			let $slashed := fold-left(?,$query,function($q, $x) {
+				if($x) then
+					replace($q,$x,concat("(",replace($x,"/", ","), ")"))
+				else
+					$q
+			})
+			return $slashed($tokens)
 		else
 			$query
-	(: convert FIQL to normalized call syntax form :)
-	let $analysis := local:analyze-string-ordered($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"),4)
-	                                                              (:<--------------- property ------------><--------- operator --------><---------------- value ---------------->:)
-	let $analysis :=
-		for $n in 1 to count($analysis) return
-			let $x := $analysis[$n]
-			return
-				if(name($x) eq "nomatch") then
+		(: convert FIQL to normalized call syntax form :)
+		let $analysis := analyze-string($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"))
+		
+		let $analysis :=
+			for $x in $analysis/* return
+				if(name($x) eq "non-match") then
 					$x
 				else
-					let $property := $x/match[1]/text()
-					let $operator := $x/match[2]/text()
-					let $value := $x/match[4]/text()
+					let $property := $x/fn:group[@nr=1]/text()
+					let $operator := $x/fn:group[@nr=2]/text()
+					let $value := $x/fn:group[@nr=4]/text()
 					let $operator := 
 						if(string-length($operator) < 3) then
 							if(map:contains($rql:operatorMap,$operator)) then
