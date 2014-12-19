@@ -8,7 +8,6 @@ xquery version "3.0";
 module namespace rql="http://lagua.nl/lib/rql";
 
 declare namespace text="http://exist-db.org/xquery/text";
-declare namespace transform="http://exist-db.org/xquery/transform";
 declare namespace request="http://exist-db.org/xquery/request";
 declare namespace response="http://exist-db.org/xquery/response";
 

@@ -1,4 +1,4 @@
-xrql
+rql
 ====
 
 An implementation of rql in xquery:
