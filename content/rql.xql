@@ -351,12 +351,12 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 	rql:apply-xq($items,$q,$maxLimit,true())
 };
 declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
-	let $filter := $q/filter
-	let $aggregate := $q/aggregate
-	let $sort := $q/sort
+	let $filter := $q("filter")
+	let $aggregate := $q("aggregate")
+	let $sort := $q("sort")
 	let $limit := 
-		if($q/limit) then
-			$q/limit
+		if($q("limit")) then
+			$q("limit")
 		else if($useRange) then
 			rql:get-limit-from-range($maxLimit)
 		else
