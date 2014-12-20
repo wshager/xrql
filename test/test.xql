@@ -2,7 +2,7 @@ xquery version "3.0";
 
 import module namespace rql="http://lagua.nl/lib/rql";
 
-let $q := rql:parse(request:get-query-string(),())
+let $q := rql:parse("and(eq(name,aa),gt(price,1),sort(price))")
 
 let $data :=
 <root>
