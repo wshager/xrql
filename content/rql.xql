@@ -298,35 +298,7 @@ declare function local:stringToValue($string as xs:string, $parameters){
 	return $string
 };
 
-declare function rql:get-range($maxLimit as xs:integer) {
-	(:
-	// from https://github.com/persvr/pintura/blob/master/jsgi/rest-store.js
-	var limit = Math.min(model.maxLimit||Infinity, model.defaultLimit||Infinity) || Infinity;
-	var maxCount = 0; // don't trigger totalCount evaluation unless a valid Range: is seen
-	var start = 0;
-	var end = Infinity;
-	if (metadata.range) {
-		var range = metadata.range.match(/^items=(\d+)-(\d+)?$/);
-		if (range) {
-			start = +range[1] || 0;
-			end = range[2];
-			end = (end !== undefined) ? +end : Infinity;
-			// compose the limit op
-			if (end >= start) {
-				limit = Math.min(limit, end + 1 - start);
-				// trigger totalCount evaluation
-				maxCount = Infinity;
-			}
-		}
-		// always honor existing finite model.maxLimit
-		if (limit !== Infinity) {
-			queryString += "&limit(" + limit + "," + start + "," + maxCount + ")";
-			// FIXME: won't be better to not mangle the query and pass limit params via metadata?!
-			//metadata.limit = {skip: start, limit: limit, totalCount: maxCount};
-		}
-	}
-	:)
-	let $range := request:get-header("Range")
+declare function rql:get-limit-from-range($range as xs:string, $maxLimit as xs:integer) {
 	let $maxCount := 0
 	let $limit := 
 		if($maxLimit) then
@@ -342,13 +314,13 @@ declare function rql:get-range($maxLimit as xs:integer) {
 			if(count($groups)>0) then
 				let $start := 
 					if($groups[2]) then
-						xs:integer($groups[2])
+						number($groups[2])
 					else
 						$start
 				
 				let $end := 
 					if($groups[3]) then
-						xs:integer($groups[3])
+						number($groups[3])
 					else
 						$end
 				let $limit :=
@@ -361,13 +333,17 @@ declare function rql:get-range($maxLimit as xs:integer) {
 						1
 					else
 						$maxCount
-				return concat($limit,",",$start,",",$maxCount)
+				return ($limit,$start,$maxCount)
 			else
-				concat($limit,",",$start,",",$maxCount)
+				($limit,$start,$maxCount)
 		else
-			concat($limit,",",$start,",",$maxCount)
+			($limit,$start,$maxCount)
 };
 
+(: TODO remove. These are for backwards-compat only :)
+declare function rql:get-limit-from-range($maxLimit as xs:integer) {
+	rql:get-limit-from-range(string(request:get-header("Range")),$maxLimit)
+};
 declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
 	let $range := concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
 	return
@@ -376,38 +352,53 @@ declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,
 		response:set-header("Content-Range",$range)
 	)
 };
-
+declare function rql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
+	rql:xq-page($items,($limit,$start,$maxCount))
+};
 declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer) {
 	rql:apply-xq($items,$q,$maxLimit,true())
 };
-
 declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
 	let $filter := $q/terms/text()
-	let $limit := $q/limit/text()
 	let $special := $q/special/args
 	let $limit := 
-		if($q/limit/text()) then
-			$q/limit/text()
+		if($q/limit) then
+			$q/limit
 		else if($useRange) then
-			rql:get-range($maxLimit)
+			rql:get-limit-from-range($maxLimit)
 		else
-			"0,0,0"
-	let $range := tokenize($limit,",")
-	let $limit := xs:integer($range[1])
-	let $start := xs:integer($range[2])
-	let $maxCount :=
-		if($useRange) then
-			xs:integer($range[3])
+			(0,0,0)
+	
+	(: filter :)
+	let $items := rql:xq-filter($items,$filter,$special)
+	(: sort, but only if returns a sequence :)
+	let $items := 
+		if(exists($special/name)) then
+			$items
 		else
-			0
-	let $sort := string-join(for $x in tokenize($q/sort,",") return concat("$x/",$x),",")
+			rql:xq-sort($items,$sort)
+	return
+		if($useRange and not(exists($special/name))) then
+			let $null := rql:set-range-header($limit,$start,$maxCount,count($items))
+			return rql:xq-page($items, $limit)
+		else
+			$items
+};
+(: end backwards-compat :)
+
+
+
+declare function rql:xq-filter($items as node()*, $filter as xs:string) {
+	rql:xq-filter($items,$filter,())
+};
+declare function rql:xq-filter($items as node()*, $filter as xs:string, $special as node()) {
 	(: are there items to return? :)
 	let $items := 
 		if($filter ne "") then
 			util:eval(concat("$items[",$filter,"]"))
 		else
 			$items
-	let $items :=
+	return
 		if($special and $special/name) then
 			let $operator := $special/name/text()
 			let $operator := 
@@ -417,34 +408,37 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 					$operator
 			let $path := $special/args[1]/text()
 			return util:eval($operator || "($items/" || $path || ")")
-		else if($sort ne "") then
+		else $items
+};
+
+declare function rql:xq-sort($items as node()*, $sort as node()*) {
+	let $sort := string-join(for $x in tokenize($sort,",") return concat("$x/",$x),",")
+	return
+		if($sort ne "") then
 			util:eval(concat("for $x in $items order by ", $sort, " return $x"))
-		else
-			$items
-	return 
-		if($maxCount and not($special)) then
-			rql:apply-paging($items,$limit,$start,$maxCount)
 		else
 			$items
 };
 
-declare function rql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
-	if($maxCount and $limit and $start < count($items)) then
-		(: sequence is 1-based :)
-		(: this will return the filtered count :)
-		let $totalCount := count($items)
-		let $null := rql:set-range-header($limit,$start,$maxCount,$totalCount)
-		let $items :=
-			if($limit and $limit < 1 div 0e0) then
-				subsequence($items,$start+1,$limit)
-			else
-				$items
-		return $items
-	else if($maxCount) then
-		let $null := rql:set-range-header($limit,$start,$maxCount,0)
-		return ()
-	else
-		$items
+declare function rql:xq-page($items as node()*, $limit as xs:integer*) {
+	let $limit := $limit[1]
+	let $start := $limit[2]
+	let $maxCount := $limit[3]
+	return
+		if($maxCount and $limit and $start < count($items)) then
+			(: sequence is 1-based :)
+			(: this will return the filtered count :)
+			let $totalCount := count($items)
+			let $items :=
+				if($limit and $limit < 1 div 0e0) then
+					subsequence($items,$start+1,$limit)
+				else
+					$items
+			return $items
+		else if($maxCount) then
+			()
+		else
+			$items
 };
 
 declare variable $rql:autoConvertedString := (
