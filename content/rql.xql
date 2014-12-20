@@ -235,7 +235,7 @@ declare function rql:to-xq($value as node()*) {
 						$limit
 				return $limit
 			},
-			element terms {
+			element filter {
 				$filter
 			},
 			element special {
@@ -344,8 +344,8 @@ declare function rql:get-limit-from-range($range as xs:string, $maxLimit as xs:i
 declare function rql:get-limit-from-range($maxLimit as xs:integer) {
 	rql:get-limit-from-range(string(request:get-header("Range")),$maxLimit)
 };
-declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,$maxCount as xs:integer,$totalCount as xs:integer) {
-	let $range := concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
+declare function rql:set-range-header($limit as xs:integer*,$totalCount as xs:integer) {
+	let $range := rql:get-content-range-header($limit,$totalCount)
 	return
 	(
 		response:set-header("Accept-Ranges","items"),
@@ -353,14 +353,15 @@ declare function rql:set-range-header($limit as xs:integer,$start as xs:integer,
 	)
 };
 declare function rql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
-	rql:xq-page($items,($limit,$start,$maxCount))
+	rql:xq-limit($items,($limit,$start,$maxCount))
 };
 declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer) {
 	rql:apply-xq($items,$q,$maxLimit,true())
 };
 declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
-	let $filter := $q/terms/text()
-	let $special := $q/special/args
+	let $filter := $q/filter
+	let $special := $q/special
+	let $sort := $q/sort
 	let $limit := 
 		if($q/limit) then
 			$q/limit
@@ -379,15 +380,20 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 			rql:xq-sort($items,$sort)
 	return
 		if($useRange and not(exists($special/name))) then
-			let $null := rql:set-range-header($limit,$start,$maxCount,count($items))
-			return rql:xq-page($items, $limit)
+			let $null := rql:set-range-header($limit,count($items))
+			return rql:xq-limit($items, $limit)
 		else
 			$items
 };
 (: end backwards-compat :)
 
 
-
+declare function rql:get-content-range-header($limit as xs:integer*,$totalCount as xs:integer) {
+	let $limit := $limit[1]
+	let $start := $limit[2]
+	let $maxCount := $limit[3]
+	return concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
+};
 declare function rql:xq-filter($items as node()*, $filter as xs:string) {
 	rql:xq-filter($items,$filter,())
 };
@@ -411,16 +417,15 @@ declare function rql:xq-filter($items as node()*, $filter as xs:string, $special
 		else $items
 };
 
-declare function rql:xq-sort($items as node()*, $sort as node()*) {
-	let $sort := string-join(for $x in tokenize($sort,",") return concat("$x/",$x),",")
-	return
-		if($sort ne "") then
-			util:eval(concat("for $x in $items order by ", $sort, " return $x"))
-		else
-			$items
+declare function rql:xq-sort($items as node()*, $sort as xs:string) {
+	if($sort) then
+		let $sort := string-join(for $x in tokenize($sort,",") return concat("$x/",$x),",")
+		return util:eval(concat("for $x in $items order by ", $sort, " return $x"))
+	else
+		$items
 };
 
-declare function rql:xq-page($items as node()*, $limit as xs:integer*) {
+declare function rql:xq-limit($items as node()*, $limit as xs:integer*) {
 	let $limit := $limit[1]
 	let $start := $limit[2]
 	let $maxCount := $limit[3]
