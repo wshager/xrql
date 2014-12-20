@@ -98,10 +98,16 @@ declare function rql:to-xq-string($value as node()*) {
 	if($v = $rql:operators) then
 		let $path := replace($value/args[1]/text(),"\.",":")
 		let $operator := $v
-		let $target := rql:converters-default($value/args[2]/text())
+		let $target :=
+			if($value/args[2]/args) then
+				rql:to-xq-string($value/args[2])
+			else
+				rql:converters-default($value/args[2]/text())
 		(: ye olde wildcard :)
 		let $operator :=
-			if($operator eq "eq" and contains($target,"*")) then
+			if($value/args[2]/args) then
+				$operator
+			else if($operator eq "eq" and contains($target,"*")) then
 				"wildcardmatch"
 			else if($target instance of xs:double) then
 				(: reverse lookup :)
