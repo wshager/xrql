@@ -81,6 +81,20 @@ declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 declare variable $rql:methods := ("matches","exists","empty","search","contains","in","string","integer","boolean","lower-case","upper-case");
+declare variable $rql:aggregators := ("count","sum","mean","avg","max","min","values","distinct-values")
+declare variable $rql:operatorMap := map {
+	"=" := "eq",
+	"==" := "eq",
+	">" := "gt",
+	">=" := "ge",
+	"<" := "lt",
+	"<=" := "le",
+	"!=" := "ne",
+	"values" := "ne",
+	"!=" := "distinct-values",
+	"mean" := "avg"
+};
+
 
 declare function rql:declare-namespaces($node as element(),$nss as xs:string*) {
 	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
@@ -212,36 +226,27 @@ declare function rql:to-xq($value as node()*) {
 					else
 						$x
 	let $limit := rql:get-element-by-name($value,"limit")
-	let $special := rql:get-elements-by-name($value,("sum","mean","avg","max","min","values","distinct-values"))
-	let $filter := rql:remove-elements-by-name($value,("limit","sort","sum","mean","avg","max","min","values","distinct-values"))
+	let $aggregate := rql:get-elements-by-name($value,$rql:aggregators)
+	let $filter := rql:remove-elements-by-name($value,insert-before(("limit","sort"),0,$rql:aggregators))
 	let $filter := rql:remove-nested-conjunctions($filter)
 	let $filter := rql:to-xq-string($filter)
+	let $limit := $limit/args/text()
+	let $limit :=
+		if(count($limit) > 0 and count($limit)<2) then
+			insert-before(0,0,$limit)
+		else
+			$limit
+	let $limit := 
+		if(count($limit) > 0 and count($limit)<3) then
+			concat(1,0,$limit)
+		else
+			$limit
 	return
-		element root {
-			element sort {
-				string-join($sort,",")
-			},
-			element limit {
-				let $limit := $limit/args/text()
-				let $limit :=
-					if(count($limit) > 0 and count($limit)<2) then
-						insert-before(0,0,$limit)
-					else
-						$limit
-				let $limit := 
-					if(count($limit) > 0 and count($limit)<3) then
-						concat(1,0,$limit)
-					else
-						$limit
-				return $limit
-			},
-			element filter {
-				$filter
-			},
-			element special {
-				(: use only the first, special may not be combined :)
-				$special[1]
-			}
+		map {
+			"sort" => $sort
+			"limit" => $limit
+			"filter" =>	$filter,
+			"aggregate" => $aggregate[1]/args (: use only the first, aggregate may not be combined :) 
 		}
 };
 
@@ -252,19 +257,6 @@ declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as 
 declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $useRange as xs:boolean) {
 	let $q := rql:to-xq($value/args)
 	return rql:apply-xq($items,$q,$maxLimit,$useRange)
-};
-
-declare variable $rql:operatorMap := map {
-	"=" := "eq",
-	"==" := "eq",
-	">" := "gt",
-	">=" := "ge",
-	"<" := "lt",
-	"<=" := "le",
-	"!=" := "ne",
-	"values" := "ne",
-	"!=" := "distinct-values",
-	"mean" := "avg"
 };
 
 declare function local:stringToValue($string as xs:string, $parameters){
@@ -360,7 +352,7 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 };
 declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
 	let $filter := $q/filter
-	let $special := $q/special
+	let $aggregate := $q/aggregate
 	let $sort := $q/sort
 	let $limit := 
 		if($q/limit) then
@@ -371,15 +363,15 @@ declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:in
 			(0,0,0)
 	
 	(: filter :)
-	let $items := rql:xq-filter($items,$filter,$special)
+	let $items := rql:xq-filter($items,$filter,$aggregate)
 	(: sort, but only if returns a sequence :)
 	let $items := 
-		if(exists($special/name)) then
+		if(exists($aggregate/name)) then
 			$items
 		else
 			rql:xq-sort($items,$sort)
 	return
-		if($useRange and not(exists($special/name))) then
+		if($useRange and not(exists($aggregate/name))) then
 			let $null := rql:set-range-header($limit,count($items))
 			return rql:xq-limit($items, $limit)
 		else
@@ -397,24 +389,28 @@ declare function rql:get-content-range-header($limit as xs:integer*,$totalCount 
 declare function rql:xq-filter($items as node()*, $filter as xs:string) {
 	rql:xq-filter($items,$filter,())
 };
-declare function rql:xq-filter($items as node()*, $filter as xs:string, $special as node()) {
+declare function rql:xq-filter($items as node()*, $filter as xs:string, $aggregate as node()) {
 	(: are there items to return? :)
 	let $items := 
 		if($filter ne "") then
 			util:eval(concat("$items[",$filter,"]"))
 		else
 			$items
-	return
-		if($special and $special/name) then
-			let $operator := $special/name/text()
-			let $operator := 
-				if(map:contains($rql:operatorMap,$operator)) then
-					$rql:operatorMap($operator)
-				else
-					$operator
-			let $path := $special/args[1]/text()
-			return util:eval($operator || "($items/" || $path || ")")
-		else $items
+	return rql:xq:aggregate($items,$aggregate)
+};
+
+declare function rql:xq-aggregate($items as node()*, $aggregate as node()) {
+	if($aggregate and $aggregate/name) then
+		let $operator := $aggregate/name/text()
+		let $operator := 
+			if(map:contains($rql:operatorMap,$operator)) then
+				$rql:operatorMap($operator)
+			else
+				$operator
+		let $path := $aggregate/args[1]/text()
+		return util:eval($operator || "($items/" || $path || ")")
+	else
+		$items
 };
 
 declare function rql:xq-sort($items as node()*, $sort as xs:string) {
