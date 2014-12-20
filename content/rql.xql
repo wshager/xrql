@@ -81,7 +81,7 @@ declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 declare variable $rql:methods := ("matches","exists","empty","search","contains","in","string","integer","boolean","lower-case","upper-case");
-declare variable $rql:aggregators := ("count","sum","mean","avg","max","min","values","distinct-values")
+declare variable $rql:aggregators := ("count","sum","mean","avg","max","min","values","distinct-values");
 declare variable $rql:operatorMap := map {
 	"=" := "eq",
 	"==" := "eq",
@@ -243,18 +243,18 @@ declare function rql:to-xq($value as node()*) {
 			$limit
 	return
 		map {
-			"sort" => $sort
-			"limit" => $limit
-			"filter" =>	$filter,
-			"aggregate" => $aggregate[1]/args (: use only the first, aggregate may not be combined :) 
+			"sort" := $sort,
+			"limit" := $limit,
+			"filter" :=	$filter,
+			"aggregate" := $aggregate[1]/args (: use only the first, aggregate may not be combined :) 
 		}
 };
 
 declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer) {
-	rql:sequence($items,$value, $maxLimit, true())
+	rql:sequence($items,$value, $maxLimit, "")
 };
 
-declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $useRange as xs:boolean) {
+declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $range as xs:string) {
 	let $q := rql:to-xq($value/args)
 	let $filter := $q("filter")
 	let $aggregate := $q("aggregate")
@@ -262,8 +262,8 @@ declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as 
 	let $limit := 
 		if($q("limit")) then
 			$q("limit")
-		else if($useRange) then
-			rql:get-limit-from-range($maxLimit)
+		else if($range) then
+			rql:get-limit-from-range($range,$maxLimit)
 		else
 			(0,0,0)
 	
@@ -371,7 +371,7 @@ declare function rql:xq-filter($items as node()*, $filter as xs:string, $aggrega
 			util:eval(concat("$items[",$filter,"]"))
 		else
 			$items
-	return rql:xq:aggregate($items,$aggregate)
+	return rql:xq-aggregate($items,$aggregate)
 };
 
 declare function rql:xq-aggregate($items as node()*, $aggregate as node()) {
@@ -823,4 +823,3 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 	let $query := string-join($analysis,"")
 	return local:set-conjunction($query)
 };
-
