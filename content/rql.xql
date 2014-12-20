@@ -222,16 +222,15 @@ declare function rql:to-xq($value as node()*) {
 				string-join($sort,",")
 			},
 			element limit {
-				let $range := $limit/args/text()
-				let $limit := string-join($range,",")
+				let $limit := $limit/args/text()
 				let $limit :=
-					if(count($range) > 0 and count($range)<2) then
-						concat($limit,",0")
+					if(count($limit) > 0 and count($limit)<2) then
+						insert-before(0,0,$limit)
 					else
 						$limit
 				let $limit := 
-					if(count($range) > 0 and count($range)<3) then
-						concat($limit,",1")
+					if(count($limit) > 0 and count($limit)<3) then
+						concat(1,0,$limit)
 					else
 						$limit
 				return $limit
