@@ -276,7 +276,7 @@ declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as 
 		else
 			rql:xq-sort($items,$sort)
 	return
-		if($useRange and not($aggregate)) then
+		if($range and not($aggregate)) then
 			rql:xq-limit($items, $limit)
 		else
 			$items
@@ -361,10 +361,12 @@ declare function rql:get-content-range-header($limit as xs:integer*,$totalCount 
 	let $maxCount := $limit[3]
 	return concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
 };
+
 declare function rql:xq-filter($items as node()*, $filter as xs:string) {
 	rql:xq-filter($items,$filter,())
 };
-declare function rql:xq-filter($items as node()*, $filter as xs:string, $aggregate as node()) {
+
+declare function rql:xq-filter($items as node()*, $filter as xs:string, $aggregate as node()?) {
 	(: are there items to return? :)
 	let $items := 
 		if($filter ne "") then
@@ -374,7 +376,7 @@ declare function rql:xq-filter($items as node()*, $filter as xs:string, $aggrega
 	return rql:xq-aggregate($items,$aggregate)
 };
 
-declare function rql:xq-aggregate($items as node()*, $aggregate as node()) {
+declare function rql:xq-aggregate($items as node()*, $aggregate as node()?) {
 	if($aggregate and $aggregate/name) then
 		let $operator := $aggregate/name/text()
 		let $operator := 
@@ -388,10 +390,9 @@ declare function rql:xq-aggregate($items as node()*, $aggregate as node()) {
 		$items
 };
 
-declare function rql:xq-sort($items as node()*, $sort as xs:string) {
+declare function rql:xq-sort($items as node()*, $sort as xs:string*) {
 	if($sort) then
-		let $sort := string-join(for $x in tokenize($sort,",") return concat("$x/",$x),",")
-		return util:eval(concat("for $x in $items order by ", $sort, " return $x"))
+		util:eval(concat("for $x in $items order by ", string-join(for $x in $sort return concat("$x/",$x),","), " return $x"))
 	else
 		$items
 };
