@@ -256,7 +256,30 @@ declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as 
 
 declare function rql:sequence($items as node()*,$value as node()*, $maxLimit as xs:integer, $useRange as xs:boolean) {
 	let $q := rql:to-xq($value/args)
-	return rql:apply-xq($items,$q,$maxLimit,$useRange)
+	let $filter := $q("filter")
+	let $aggregate := $q("aggregate")
+	let $sort := $q("sort")
+	let $limit := 
+		if($q("limit")) then
+			$q("limit")
+		else if($useRange) then
+			rql:get-limit-from-range($maxLimit)
+		else
+			(0,0,0)
+	
+	(: filter :)
+	let $items := rql:xq-filter($items,$filter,$aggregate)
+	(: sort, but only if returns a sequence :)
+	let $items := 
+		if($aggregate) then
+			$items
+		else
+			rql:xq-sort($items,$sort)
+	return
+		if($useRange and not($aggregate)) then
+			rql:xq-limit($items, $limit)
+		else
+			$items
 };
 
 declare function local:stringToValue($string as xs:string, $parameters){
@@ -331,54 +354,6 @@ declare function rql:get-limit-from-range($range as xs:string, $maxLimit as xs:i
 		else
 			($limit,$start,$maxCount)
 };
-
-(: TODO remove. These are for backwards-compat only :)
-declare function rql:get-limit-from-range($maxLimit as xs:integer) {
-	rql:get-limit-from-range(string(request:get-header("Range")),$maxLimit)
-};
-declare function rql:set-range-header($limit as xs:integer*,$totalCount as xs:integer) {
-	let $range := rql:get-content-range-header($limit,$totalCount)
-	return
-	(
-		response:set-header("Accept-Ranges","items"),
-		response:set-header("Content-Range",$range)
-	)
-};
-declare function rql:apply-paging($items as node()*,$limit as xs:integer,$start as xs:integer,$maxCount as xs:integer){
-	rql:xq-limit($items,($limit,$start,$maxCount))
-};
-declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer) {
-	rql:apply-xq($items,$q,$maxLimit,true())
-};
-declare function rql:apply-xq($items as node()*,$q as node()*,$maxLimit as xs:integer, $useRange as xs:boolean){
-	let $filter := $q("filter")
-	let $aggregate := $q("aggregate")
-	let $sort := $q("sort")
-	let $limit := 
-		if($q("limit")) then
-			$q("limit")
-		else if($useRange) then
-			rql:get-limit-from-range($maxLimit)
-		else
-			(0,0,0)
-	
-	(: filter :)
-	let $items := rql:xq-filter($items,$filter,$aggregate)
-	(: sort, but only if returns a sequence :)
-	let $items := 
-		if(exists($aggregate/name)) then
-			$items
-		else
-			rql:xq-sort($items,$sort)
-	return
-		if($useRange and not(exists($aggregate/name))) then
-			let $null := rql:set-range-header($limit,count($items))
-			return rql:xq-limit($items, $limit)
-		else
-			$items
-};
-(: end backwards-compat :)
-
 
 declare function rql:get-content-range-header($limit as xs:integer*,$totalCount as xs:integer) {
 	let $limit := $limit[1]
