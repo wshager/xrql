@@ -355,11 +355,8 @@ declare function rql:get-limit-from-range($range as xs:string, $maxLimit as xs:i
 			($limit,$start,$maxCount)
 };
 
-declare function rql:get-content-range-header($limit as xs:integer*,$totalCount as xs:integer) {
-	let $limit := $limit[1]
-	let $start := $limit[2]
-	let $maxCount := $limit[3]
-	return concat("items ",min(($start,$totalCount)),"-",min(($start+$limit,$totalCount))-1,"/",$totalCount)
+declare function rql:get-content-range-header($ranges as xs:integer*,$totalcount as xs:integer) {
+	concat("items ",min(($ranges[2],$totalcount)),"-",min(($ranges[2]+$ranges[1],$totalcount))-1,"/",$totalcount)
 };
 
 declare function rql:xq-filter($items as node()*, $filter as xs:string) {
@@ -397,10 +394,10 @@ declare function rql:xq-sort($items as node()*, $sort as xs:string*) {
 		$items
 };
 
-declare function rql:xq-limit($items as node()*, $limit as xs:integer*) {
-	let $limit := $limit[1]
-	let $start := $limit[2]
-	let $maxCount := $limit[3]
+declare function rql:xq-limit($items as node()*, $ranges as xs:integer*) {
+	let $limit := $ranges[1]
+	let $start := $ranges[2]
+	let $maxCount := $ranges[3]
 	return
 		if($maxCount and $limit and $start < count($items)) then
 			(: sequence is 1-based :)
