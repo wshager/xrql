@@ -388,7 +388,7 @@ declare function rql:xq-aggregate($items as node()*, $aggregate as node()?) {
 };
 
 declare function rql:xq-sort($items as node()*, $sort as xs:string*) {
-	if($sort) then
+	if(exists($sort)) then
 		util:eval(concat("for $x in $items order by ", string-join(for $x in $sort return concat("$x/",$x),","), " return $x"))
 	else
 		$items
