@@ -238,7 +238,7 @@ declare function rql:to-xq($value as node()*) {
 			$limit
 	let $limit := 
 		if(count($limit) > 0 and count($limit)<3) then
-			concat(1,0,$limit)
+			insert-before(1,0,$limit)
 		else
 			$limit
 	return
