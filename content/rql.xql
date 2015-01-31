@@ -114,7 +114,7 @@ declare function rql:to-xq-string($value as node()*) {
 			if($value/args[1]/args) then
 				rql:to-xq-string($value/args[1])
 			else
-				util:unescape-uri(replace($value/args[1]/text(),"\.",":"))
+				util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
 		let $operator := $v
 		let $target :=
 			if($value/args[2]/args) then
@@ -152,7 +152,7 @@ declare function rql:to-xq-string($value as node()*) {
 			if($value/args[1]/args) then
 				rql:to-xq-string($value/args[1])
 			else
-				util:unescape-uri(replace($value/args[1]/text(),"\.",":"))
+				util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
 		let $range :=
 			if($value/args[3]) then
 				$value/args[3]/text()
