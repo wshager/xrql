@@ -110,7 +110,11 @@ declare function rql:to-xq-string($value as node()*) {
     let $v := $value/name/text()
 	return
 	if($v = $rql:operators) then
-		let $path := replace($value/args[1]/text(),"\.",":")
+		let $path :=
+			if($value/args[1]/args) then
+				rql:to-xq-string($value/args[1])
+			else
+				util:unescape-uri(replace($value/args[1]/text(),"\.",":"))
 		let $operator := $v
 		let $target :=
 			if($value/args[2]/args) then
@@ -144,7 +148,11 @@ declare function rql:to-xq-string($value as node()*) {
 			if($v eq "search") then
 				"ft:query"
 			else $v
-		let $path := replace($value/args[1]/text(),"\.",":")
+		let $path :=
+			if($value/args[1]/args) then
+				rql:to-xq-string($value/args[1])
+			else
+				util:unescape-uri(replace($value/args[1]/text(),"\.",":"))
 		let $range :=
 			if($value/args[3]) then
 				$value/args[3]/text()
@@ -176,7 +184,11 @@ declare function rql:to-xq-string($value as node()*) {
 			else
 				concat($v,"(",$path,$target,$params,")")
 	else if($v = "deep") then
-		let $path := util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
+		let $path :=
+			if($value/args[1]/args) then
+				rql:to-xq-string($value/args[1])
+			else
+				util:unescape-uri(replace($value/args[1]/text(),"\.",":"),"UTF-8")
 		let $expr := rql:to-xq-string($value/args[2])
 		return concat($path,"[",$expr,"]")
 	else if($v = ("not")) then
