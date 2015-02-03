@@ -499,8 +499,8 @@ declare function rql:converters-date($x){
 };
 
 (: original character class [\+\*\$\-:\w%\._] or with comma :)
-declare variable $rql:ignore := "[A-Za-z0-9\+\*\$\-:%\._]";
-declare variable $rql:ignorec := "[A-Za-z0-9\+\*\$\-:%\._,]";
+declare variable $rql:ignore := "[\+\*\$\-:\w%\._]";
+declare variable $rql:ignorec := "[\+\*\$\-:\w%\._,]";
 
 declare function rql:converters-boolean($x){
 	$x eq "true"
@@ -810,7 +810,7 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 		else
 			$query
 		(: convert FIQL to normalized call syntax form :)
-		let $analysis := analyze-string($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=([A-Za-z0-9]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"))
+		let $analysis := analyze-string($query, concat("(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)([<>!]?=(?:[\w]*=)?|>|<)(\(",$rql:ignorec,"+\)|",$rql:ignore,"*|)"))
 		
 		let $analysis :=
 			for $x in $analysis/* return
@@ -819,7 +819,7 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 				else
 					let $property := $x/fn:group[@nr=1]/text()
 					let $operator := $x/fn:group[@nr=2]/text()
-					let $value := $x/fn:group[@nr=4]/text()
+					let $value := $x/fn:group[@nr=3]/text()
 					let $operator := 
 						if(string-length($operator) < 3) then
 							if(map:contains($rql:operatorMap,$operator)) then
