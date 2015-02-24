@@ -126,7 +126,7 @@ declare function rql:to-xq-string($value as node()*) {
 			else if($operator eq "eq" and contains($target,"*")) then
 				"wildcardmatch"
 			else if($target instance of xs:double) then
-				(: reverse lookup :)
+				(: reverse lookup 
 				let $operator := 
 					for $k in map:keys($rql:operatorMap) return
 					    if($rql:operatorMap($k) eq $operator) then
@@ -134,6 +134,8 @@ declare function rql:to-xq-string($value as node()*) {
 					    else
 					        ()
 				return $operator[last()]
+				:)
+				$operator
 			else
 				$operator
 		return
