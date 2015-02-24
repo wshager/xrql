@@ -118,7 +118,7 @@ declare function rql:to-xq-string($value as node()*) {
 			if($value/args[2]/args) then
 				rql:to-xq-string($value/args[2])
 			else
-				rql:converters-default($value/args[2]/text())
+				rql:converters-default(string($value/args[2]))
 		(: ye olde wildcard :)
 		let $operator :=
 			if($value/args[2]/args) then
@@ -163,9 +163,9 @@ declare function rql:to-xq-string($value as node()*) {
 				if($v eq "ft:query" and $range eq "phrase") then
 					concat(",<phrase>",util:unescape-uri($value/args[2]/text(),"UTF-8"),"</phrase>")
 				else if($v eq "in") then
-					string-join(for $x in $value/args[2]/args return rql:converters-default($x/text()),",")
+					string-join(for $x in $value/args[2]/args return rql:converters-default(string($x)),",")
 				else
-					concat(",",rql:converters-default($value/args[2]/text()))
+					concat(",",rql:converters-default(string($value/args[2])))
 			else
 				""
 		let $params := 
@@ -447,7 +447,7 @@ declare variable $rql:autoConvertedValue := (
 	"-1 div 0e0"
 );
 
-declare function rql:converters-auto($string){
+declare function rql:converters-auto($string as xs:string){
 	if($rql:autoConvertedString = $string) then
 		$rql:autoConvertedValue[index-of($rql:autoConvertedString,$string)]
 	else
@@ -461,10 +461,10 @@ declare function rql:converters-auto($string){
 			else
 				$number
 };
-declare function rql:converters-number($x){
+declare function rql:converters-number($x as xs:string){
 	number($x)
 };
-declare function rql:converters-epoch($x){
+declare function rql:converters-epoch($x as xs:string){
 	(:
 		var date = new Date(+x);
 		if (isNaN(date.getTime())) {
@@ -474,7 +474,7 @@ declare function rql:converters-epoch($x){
 		:)
 	$x
 };
-declare function rql:converters-isodate($x){
+declare function rql:converters-isodate($x as xs:string){
 	$x
 	(:
 		// four-digit year
@@ -484,7 +484,7 @@ declare function rql:converters-isodate($x){
 		return exports.converters.date(date);
 	:)
 };
-declare function rql:converters-date($x){
+declare function rql:converters-date($x as xs:string){
 	$x
 	(:
 		var isoDate = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2}(?:\.\d*)?)Z$/.exec(x);
@@ -504,19 +504,19 @@ declare function rql:converters-date($x){
 declare variable $rql:ignore := "[\+\*\$\-:\w%\._]";
 declare variable $rql:ignorec := "[\+\*\$\-:\w%\._,]";
 
-declare function rql:converters-boolean($x){
+declare function rql:converters-boolean($x as xs:string){
 	$x eq "true"
 };
-declare function rql:converters-string($string){
+declare function rql:converters-string($string as xs:string){
 	xmldb:decode-uri($string)
 };
-declare function rql:converters-re($x){
+declare function rql:converters-re($x as xs:string){
 	xmldb:decode-uri($x)
 };
-declare function rql:converters-RE($x){
+declare function rql:converters-RE($x as xs:string){
 	xmldb:decode-uri($x)
 };
-declare function rql:converters-glob($x){
+declare function rql:converters-glob($x as xs:string){
 	$x
 	(:
 		var s = decodeURIComponent(x).replace(/([\\|\||\(|\)|\[|\{|\^|\$|\*|\+|\?|\.|\<|\>])/g, function(x){return '\\'+x;}).replace(/\\\*/g,'.*').replace(/\\\?/g,'.?');
@@ -533,7 +533,7 @@ declare function rql:converters-glob($x){
 // RP.converters["default"] = RQ.converter.string;
 :)
 
-declare function rql:converters-default($x) {
+declare function rql:converters-default($x as xs:string) {
 	rql:converters-auto($x)
 };
 
