@@ -90,8 +90,6 @@ declare variable $rql:operatorMap := map {
 	"<" := "lt",
 	"<=" := "le",
 	"!=" := "ne",
-	"values" := "ne",
-	"!=" := "distinct-values",
 	"mean" := "avg"
 };
 
@@ -432,6 +430,7 @@ declare variable $rql:autoConvertedString := (
 	"false",
 	"null",
 	"undefined",
+	"",
 	"Infinity",
 	"-Infinity"
 );
@@ -439,6 +438,7 @@ declare variable $rql:autoConvertedString := (
 declare variable $rql:autoConvertedValue := (
 	"true()",
 	"false()",
+	"()",
 	"()",
 	"()",
 	"1 div 0e0",
