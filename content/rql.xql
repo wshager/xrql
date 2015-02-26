@@ -451,15 +451,10 @@ declare function rql:converters-auto($string as xs:string){
 	if($rql:autoConvertedString = $string) then
 		$rql:autoConvertedValue[index-of($rql:autoConvertedString,$string)]
 	else
-		let $number := number($string)
-		return 
-			if($number ne 0 and string($number) ne $string) then
-				if(contains($string,"(")) then
-					util:unescape-uri($string,"UTF-8")
-				else
-					concat("'",util:unescape-uri($string,"UTF-8"),"'")
-			else
-				$number
+		if(contains($string,"(")) then
+			util:unescape-uri($string,"UTF-8")
+		else
+			concat("'",util:unescape-uri($string,"UTF-8"),"'")
 };
 declare function rql:converters-number($x as xs:string){
 	number($x)
