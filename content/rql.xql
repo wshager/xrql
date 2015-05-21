@@ -336,18 +336,18 @@ declare function rql:get-limit-from-range($range as xs:string, $maxLimit as xs:i
 	let $end := 1 div 0e0
 	return
 		if($range) then
-			let $groups := text:groups($range, "^items=(\d+)-(\d+)?$")
+			let $groups := analyze-string($range,"^items=(\d+)-(\d+)?$")//fn:group/text()
 			return
 			if(count($groups)>0) then
 				let $start := 
-					if($groups[2]) then
-						number($groups[2])
+					if($groups[1]) then
+						number($groups[1])
 					else
 						$start
 				
 				let $end := 
-					if($groups[3]) then
-						number($groups[3])
+					if($groups[2]) then
+						number($groups[2])
 					else
 						$end
 				let $limit :=
