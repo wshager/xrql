@@ -7,11 +7,6 @@ xquery version "3.0";
 
 module namespace rql="http://lagua.nl/lib/rql";
 
-declare namespace text="http://exist-db.org/xquery/text";
-declare namespace request="http://exist-db.org/xquery/request";
-declare namespace response="http://exist-db.org/xquery/response";
-
-
 declare function rql:to-string($q as node()*) {
     if($q/name) then
         concat($q/name,"(",
@@ -789,7 +784,7 @@ declare function rql:parse-query($query as xs:string?, $parameters as xs:anyAtom
 			$query
 	let $query :=
 		if(contains($query,"/")) then
-			let $tokens := tokenize($query,concat("",$rql:ignore,"*/",substring($rql:ignore,1,string-length($rql:ignore)-1),"/]*"))
+			let $tokens := tokenize($query,concat("",$rql:ignore,"*/[",substring($rql:ignore,1,string-length($rql:ignore)-1),"/]*"))
 			let $replaced := fold-left(?,$query,function($q, $x) {
 				if($x) then
 					replace($q,$x,"?")
