@@ -63,9 +63,7 @@ declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 			if($node/name = ("and","or") and count($node/args) = 0) then
 				()
 	 		else if($node/name = ("and","or") and count($node/args) = 1) then
-				element {node-name($node)} {
-					rql:remove-nested-conjunctions($node/args/*)
-				}
+				rql:remove-nested-conjunctions($node/args)
 			else
 				element {node-name($node)} {
 					rql:remove-nested-conjunctions($node/node())
@@ -91,6 +89,10 @@ declare variable $rql:operatorMap := map {
 
 declare function rql:declare-namespaces($node as element(),$nss as xs:string*) {
 	for $ns in $nss return util:declare-namespace($ns,namespace-uri-for-prefix($ns,$node))
+};
+
+declare function rql:declare-namespace($ns,$uri) {
+	util:declare-namespace($ns,$uri)
 };
 
 declare function rql:to-xq-string($value as node()*) {
