@@ -8,27 +8,27 @@ xquery version "3.0";
 module namespace rql="http://lagua.nl/lib/rql";
 
 declare function rql:to-string($q as node()*) {
-    if($q/name) then
-        concat($q/name,"(",
-            string-join(
-                for $x in $q/args return
-                    if($x/args) then
-                        rql:to-string($x)
-                    else
-                        $x
-            ,",")
-        ,")")
-    else if($q/args) then
-       if($q/args/*) then
-            rql:to-string($q/args)
-        else
-            "(" || string-join($q/args,",") || ")"
-    else
-    	"" 
+	if($q/name) then
+		concat($q/name,"(",
+			string-join(
+				for $x in $q/args return
+					if($x/args) then
+						rql:to-string($x)
+					else
+						$x
+			,",")
+		,")")
+	else if($q/args) then
+		if($q/args/*) then
+			rql:to-string($q/args)
+		else
+			"(" || string-join($q/args,",") || ")"
+	else
+		"" 
 };
 
 declare function rql:remove-elements-by-name($nodes as node()*, $names as xs:string*) as node()* {
-    for $node in $nodes return
+	for $node in $nodes return
 		if($node instance of element()) then
 	 		if($node/name = $names) then
 				()
@@ -74,7 +74,7 @@ declare function rql:remove-nested-conjunctions($nodes as node()*) as node()* {
 
 declare variable $rql:operators := ("eq","gt","ge","lt","le","ne");
 declare variable $rql:methods := ("matches","exists","empty","search","contains","in","string","integer","boolean","lower-case","upper-case");
-declare variable $rql:aggregators := ("count","sum","mean","avg","max","min","values","distinct-values");
+declare variable $rql:aggregators := ("count","sum","avg","max","min","values","distinct-values");
 declare variable $rql:operatorMap := map {
 	"=" := "eq",
 	"==" := "eq",
@@ -82,8 +82,12 @@ declare variable $rql:operatorMap := map {
 	">=" := "ge",
 	"<" := "lt",
 	"<=" := "le",
-	"!=" := "ne",
-	"mean" := "avg"
+	"!=" := "ne"
+};
+
+declare variable $rql:xqMap := map {
+	"mean" := "avg",
+	"match" := "matches"
 };
 
 
@@ -102,7 +106,12 @@ declare function rql:to-xq-string($value as node()*) {
 			$value/*[1]
 		else
 			$value
-    let $v := $value/name/text()
+	let $v := $value/name/text()
+	let $v :=
+		if(map:contains($rql:xqMap,$v)) then
+			$rql:xqMap($v)
+		else
+			$v
 	return
 	if($v = $rql:operators) then
 		let $path :=
@@ -126,10 +135,10 @@ declare function rql:to-xq-string($value as node()*) {
 				(: reverse lookup 
 				let $operator := 
 					for $k in map:keys($rql:operatorMap) return
-					    if($rql:operatorMap($k) eq $operator) then
-					        $k
-					    else
-					        ()
+						if($rql:operatorMap($k) eq $operator) then
+							$k
+						else
+							()
 				return $operator[last()]
 				:)
 				$operator
@@ -157,8 +166,17 @@ declare function rql:to-xq-string($value as node()*) {
 				"any"
 		let $target := 
 			if($value/args[2]) then
-				if($v eq "ft:query" and $range eq "phrase") then
-					concat(",<phrase>",util:unescape-uri($value/args[2]/text(),"UTF-8"),"</phrase>")
+				if($v eq "matches") then
+					$value/args[2]/text()
+				else if($v eq "ft:query" and $range eq "phrase") then
+					(: remove any casting for ft search :)
+					let $target := util:unescape-uri($value/args[2]/text(),"UTF-8")
+					let $target :=
+						if(matches($target,"\(.*\)")) then
+							util:eval($target)
+						else
+							$target
+					return concat(",<phrase>",$target,"</phrase>")
 				else if($v eq "in") then
 					string-join(for $x in $value/args[2]/args return rql:converters-default(string($x)),",")
 				else
@@ -176,7 +194,9 @@ declare function rql:to-xq-string($value as node()*) {
 			else
 				""
 		return
-			if($v eq "in") then
+			if($v eq "matches") then
+				concat("matches(",$path,",'^",replace($target,"\*",".*"),"$','i'",")")
+			else if($v eq "in") then
 				concat($path,"=(",$target,")")
 			else
 				concat($v,"(",$path,$target,$params,")")
@@ -385,11 +405,6 @@ declare function rql:xq-filter($items as node()*, $filter as xs:string, $aggrega
 declare function rql:xq-aggregate($items as node()*, $aggregate as node()?) {
 	if($aggregate and $aggregate/name) then
 		let $operator := $aggregate/name/text()
-		let $operator := 
-			if(map:contains($rql:operatorMap,$operator)) then
-				$rql:operatorMap($operator)
-			else
-				$operator
 		let $path := $aggregate/args[1]/text()
 		return util:eval($operator || "($items/" || $path || ")")
 	else
