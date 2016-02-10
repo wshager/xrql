@@ -108,7 +108,7 @@ declare function rql:to-xq-string($value as node()*) {
 			$value
 	let $v := $value/name/text()
 	let $v :=
-		if(map:contains($rql:xqMap,$v)) then
+		if($v and map:contains($rql:xqMap,$v)) then
 			$rql:xqMap($v)
 		else
 			$v
